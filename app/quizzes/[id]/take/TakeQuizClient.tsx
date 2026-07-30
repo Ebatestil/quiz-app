@@ -1,0 +1,281 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { AppShell, Surface } from '@/components/AppShell'
+import type { AttemptPayload, Profile } from '@/lib/types'
+
+export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
+  const { profile, quizId } = props
+  const router = useRouter()
+
+  const [attempt, setAttempt] = useState<AttemptPayload | null>(null)
+  const [idx, setIdx] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [textAnswer, setTextAnswer] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  async function start() {
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+    const { data, error: err } = await supabase.rpc('start_attempt', { p_quiz_id: quizId })
+    if (err) {
+      setError(err.message)
+      setLoading(false)
+      return
+    }
+    setAttempt(data as AttemptPayload)
+    setIdx(0)
+    setTextAnswer('')
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: kick off the attempt as soon as the page loads
+    start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizId])
+
+  const q = attempt?.questions[idx]
+  const isCompleted = !!attempt?.completed_at
+  const progress = useMemo(() => {
+    if (!attempt) return '0/0'
+    return `${idx + 1}/${attempt.questions.length}`
+  }, [attempt, idx])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset the textarea when the current question changes
+    setTextAnswer(q?.answer_text ?? '')
+  }, [q?.id, q?.answer_text])
+
+  async function refresh(attemptId: number) {
+    const supabase = createClient()
+    const { data } = await supabase.rpc('get_attempt', { p_attempt_id: attemptId })
+    setAttempt(data as AttemptPayload)
+  }
+
+  async function answer(selectedIndex: number) {
+    if (!attempt || isCompleted || !q) return
+    setSubmitting(true)
+    const supabase = createClient()
+    await supabase.rpc('submit_answer', {
+      p_attempt_id: attempt.id,
+      p_question_id: q.id,
+      p_selected_index: selectedIndex,
+      p_answer_text: null,
+    })
+    await refresh(attempt.id)
+    setSubmitting(false)
+  }
+
+  async function submitTextAnswer() {
+    if (!attempt || !q || isCompleted) return
+    setSubmitting(true)
+    const supabase = createClient()
+    await supabase.rpc('submit_answer', {
+      p_attempt_id: attempt.id,
+      p_question_id: q.id,
+      p_selected_index: null,
+      p_answer_text: textAnswer,
+    })
+    await refresh(attempt.id)
+    setSubmitting(false)
+  }
+
+  async function complete() {
+    if (!attempt || isCompleted) return
+    setSubmitting(true)
+    const supabase = createClient()
+    const { data } = await supabase.rpc('complete_attempt', { p_attempt_id: attempt.id })
+    setAttempt(data as AttemptPayload)
+    setSubmitting(false)
+  }
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#f6f7fb]" />
+  }
+
+  if (error) {
+    return (
+      <AppShell title="Taking Quiz" profile={profile} actions={<Link href="/" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Exit</Link>}>
+        <div className="mx-auto max-w-2xl">
+          <Surface>
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>
+          </Surface>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (!attempt) {
+    return <div className="min-h-screen bg-[#f6f7fb]" />
+  }
+
+  return (
+    <AppShell
+      title={isCompleted ? 'Results' : 'Taking Quiz'}
+      subtitle={attempt.quiz.title}
+      profile={profile}
+      actions={
+        <>
+          <Link
+            href="/"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Exit
+          </Link>
+          {isCompleted ? (
+            <button
+              onClick={() => start()}
+              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
+            >
+              Retry
+            </button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="mx-auto max-w-4xl space-y-6">
+        {isCompleted ? (
+          <Surface className="bg-gradient-to-r from-emerald-50 to-violet-50">
+            <div className="text-center">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">Great job</div>
+              <div className="mt-2 text-4xl font-semibold text-slate-900">
+                {attempt.score}/{attempt.total_questions}
+              </div>
+              <div className="mt-2 text-sm text-slate-500">You have completed the quiz.</div>
+              <div className="mt-5 flex flex-wrap justify-center gap-3">
+                <Link
+                  href={`/quizzes/${quizId}/results`}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Review Attempts
+                </Link>
+                <button
+                  onClick={() => router.push('/')}
+                  className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+          </Surface>
+        ) : (
+          <Surface>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm font-medium text-slate-600">Question {progress}</div>
+              <div className="text-sm text-slate-500">{attempt.questions.length} total questions</div>
+            </div>
+            <div className="mt-4 h-2 rounded-full bg-slate-100">
+              <div
+                className="h-2 rounded-full bg-violet-600 transition-all"
+                style={{ width: `${((idx + 1) / attempt.questions.length) * 100}%` }}
+              />
+            </div>
+
+            <div className="mt-6 text-xl font-semibold text-slate-900">{q?.prompt}</div>
+
+            {q?.type === 'multiple_choice' ? (
+              <div className="mt-6 space-y-3">
+                {(q.options ?? []).map((opt, optIdx) => {
+                  const selected = q.selected_index === optIdx
+                  const showCorrectness = isCompleted && q.is_correct !== null
+                  const isCorrectOption = showCorrectness && q.is_correct && selected
+                  const isWrongSelected = showCorrectness && !q.is_correct && selected
+
+                  return (
+                    <button
+                      key={optIdx}
+                      disabled={submitting || isCompleted}
+                      onClick={() => answer(optIdx)}
+                      className={[
+                        'w-full rounded-2xl border px-4 py-4 text-left text-sm transition',
+                        'border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/50',
+                        selected ? 'border-violet-500 bg-violet-50' : '',
+                        isCorrectOption ? 'border-emerald-300 bg-emerald-50' : '',
+                        isWrongSelected ? 'border-red-300 bg-red-50' : '',
+                        submitting ? 'opacity-70' : '',
+                      ].join(' ')}
+                    >
+                      {opt}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                <textarea
+                  value={textAnswer}
+                  onChange={(e) => setTextAnswer(e.target.value)}
+                  disabled={submitting || isCompleted}
+                  placeholder="Type your answer here"
+                  className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 disabled:opacity-60"
+                />
+                {!isCompleted ? (
+                  <button
+                    onClick={submitTextAnswer}
+                    disabled={submitting || !textAnswer.trim()}
+                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                  >
+                    Save Answer
+                  </button>
+                ) : null}
+                {isCompleted && q ? (
+                  <div
+                    className={[
+                      'rounded-2xl border px-4 py-3 text-sm',
+                      q.is_correct
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-red-200 bg-red-50 text-red-700',
+                    ].join(' ')}
+                  >
+                    Your answer: {q.answer_text || 'No answer'}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {isCompleted && q?.explanation ? (
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="font-semibold text-slate-900">Explanation</div>
+                <div className="mt-1">{q.explanation}</div>
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                disabled={idx === 0}
+              >
+                Previous
+              </button>
+              <div className="flex items-center gap-3">
+                {!isCompleted ? (
+                  <button
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    onClick={complete}
+                    disabled={submitting}
+                  >
+                    Finish Quiz
+                  </button>
+                ) : null}
+                <button
+                  className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                  onClick={() => setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))}
+                  disabled={idx === attempt.questions.length - 1}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </Surface>
+        )}
+      </div>
+    </AppShell>
+  )
+}
