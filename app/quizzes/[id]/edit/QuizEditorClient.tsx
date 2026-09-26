@@ -23,6 +23,8 @@ export function QuizEditorClient(props: {
   const [title, setTitle] = useState(quiz.title)
   const [description, setDescription] = useState(quiz.description ?? '')
   const [isPublished, setIsPublished] = useState(quiz.is_published)
+  const [lockdownEnabled, setLockdownEnabled] = useState(quiz.lockdown_enabled)
+  const [copied, setCopied] = useState(false)
 
   const [prompt, setPrompt] = useState('')
   const [questionType, setQuestionType] = useState<QuestionType>('multiple_choice')
@@ -49,6 +51,7 @@ export function QuizEditorClient(props: {
         title: title.trim(),
         description: description.trim() ? description.trim() : null,
         is_published: isPublished,
+        lockdown_enabled: lockdownEnabled,
       })
       .eq('id', quizId)
       .select()
@@ -107,6 +110,15 @@ export function QuizEditorClient(props: {
     router.refresh()
   }
 
+  const examLink = typeof window !== 'undefined' ? `${window.location.origin}/exam/${quiz.share_token}` : ''
+
+  async function copyExamLink() {
+    if (!examLink) return
+    await navigator.clipboard.writeText(examLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <AppShell
       title="Create / Edit Quiz"
@@ -153,10 +165,53 @@ export function QuizEditorClient(props: {
                 <span className="text-sm font-medium text-slate-700">Published</span>
                 <input type="checkbox" checked={isPublished} onChange={(e) => setIsPublished(e.target.checked)} />
               </label>
+              <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-700">Exam Mode (lockdown)</div>
+                  <div className="text-xs text-slate-500">
+                    Fullscreen required; switching tabs/apps auto-submits.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={lockdownEnabled}
+                  onChange={(e) => setLockdownEnabled(e.target.checked)}
+                />
+              </label>
               <button className="w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-medium text-white hover:bg-violet-500">
                 Save Quiz
               </button>
             </form>
+          </Surface>
+
+          <Surface title="Exam Link" subtitle="Share this with students — no account needed to take it.">
+            {isPublished ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <code className="flex-1 truncate text-sm text-slate-700">{examLink}</code>
+                  <button
+                    onClick={copyExamLink}
+                    className="shrink-0 rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-500"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                {lockdownEnabled ? (
+                  <p className="text-xs text-amber-600">
+                    Exam Mode is on: students must allow fullscreen, and the attempt auto-submits the
+                    instant they switch tabs, switch apps, or exit fullscreen.
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Exam Mode is off — students can take this like a normal untimed quiz, no lockdown.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                Publish this quiz to activate its exam link.
+              </div>
+            )}
           </Surface>
 
           <Surface title="Add Question">

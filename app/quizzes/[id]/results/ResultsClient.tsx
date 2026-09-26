@@ -6,28 +6,44 @@ import { createClient } from '@/lib/supabase/client'
 import { AppShell, Surface } from '@/components/AppShell'
 import type { AttemptRow, Profile } from '@/lib/types'
 
-export function ResultsClient(props: { profile: Profile; quizId: number; initialRows: AttemptRow[] }) {
-  const { profile, quizId } = props
+const TERMINATION_LABELS: Record<string, string> = {
+  tab_switch: 'Tab/app switch',
+  blur: 'Left window',
+  fullscreen_exit: 'Exited fullscreen',
+  devtools: 'Dev tools attempt',
+}
+
+export function ResultsClient(props: { profile: Profile; quizId: number; isOwner: boolean; initialRows: AttemptRow[] }) {
+  const { profile, quizId, isOwner } = props
   const [rows, setRows] = useState<AttemptRow[]>(props.initialRows)
   const [loading, setLoading] = useState(false)
 
   async function load() {
     setLoading(true)
     const supabase = createClient()
-    const { data } = await supabase
+    let query = supabase
       .from('attempts')
-      .select('id, started_at, completed_at, score, total_questions')
+      .select('id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason')
       .eq('quiz_id', quizId)
-      .eq('user_id', profile.id)
       .order('id', { ascending: false })
+
+    if (!isOwner) {
+      query = query.eq('user_id', profile.id)
+    }
+
+    const { data } = await query
     setRows((data ?? []) as AttemptRow[])
     setLoading(false)
   }
 
   return (
     <AppShell
-      title="Review Answers"
-      subtitle="See your quiz history and result summaries."
+      title={isOwner ? 'Exam Results' : 'Review Answers'}
+      subtitle={
+        isOwner
+          ? 'Every attempt on this quiz, including exam submissions from students.'
+          : 'See your quiz history and result summaries.'
+      }
       profile={profile}
       actions={
         <>
@@ -46,7 +62,7 @@ export function ResultsClient(props: { profile: Profile; quizId: number; initial
         </>
       }
     >
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <Surface title="Attempts">
           {loading ? (
             <div className="text-sm text-slate-500">Loading...</div>
@@ -60,15 +76,32 @@ export function ResultsClient(props: { profile: Profile; quizId: number; initial
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Attempt</th>
+                    {isOwner ? <th className="px-4 py-3">Student</th> : null}
                     <th className="px-4 py-3">Started</th>
                     <th className="px-4 py-3">Completed</th>
                     <th className="px-4 py-3">Score</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {rows.map((r) => (
                     <tr key={r.id}>
                       <td className="px-4 py-3 font-medium text-slate-900">#{r.id}</td>
+                      {isOwner ? (
+                        <td className="px-4 py-3 text-slate-600">
+                          {r.student_name ? (
+                            <>
+                              <div className="font-medium text-slate-900">{r.student_name}</div>
+                              {r.student_number ? (
+                                <div className="text-xs text-slate-400">{r.student_number}</div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-slate-400">You</span>
+                          )}
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3 text-slate-600">{new Date(r.started_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-slate-600">
                         {r.completed_at ? new Date(r.completed_at).toLocaleString() : '—'}
@@ -81,6 +114,29 @@ export function ResultsClient(props: { profile: Profile; quizId: number; initial
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.termination_reason ? (
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+                            {TERMINATION_LABELS[r.termination_reason] ?? r.termination_reason}
+                          </span>
+                        ) : r.completed_at ? (
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            Completed
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                            In progress
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/quizzes/${quizId}/results/${r.id}`}
+                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Review
+                        </Link>
                       </td>
                     </tr>
                   ))}

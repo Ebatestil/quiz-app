@@ -10,15 +10,31 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   const profile = await requireProfile()
   const supabase = await createClient()
 
-  const { data: quiz } = await supabase.from('quizzes').select('id, title').eq('id', quizId).single()
+  const { data: quiz } = await supabase.from('quizzes').select('id, title, user_id').eq('id', quizId).single()
   if (!quiz) notFound()
 
-  const { data: rows } = await supabase
+  const isOwner = quiz.user_id === profile.id
+
+  // Owners (teachers) see every attempt on their quiz, including students who
+  // took it via the exam link. Everyone else only sees their own attempts.
+  let query = supabase
     .from('attempts')
-    .select('id, started_at, completed_at, score, total_questions')
+    .select('id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason')
     .eq('quiz_id', quizId)
-    .eq('user_id', profile.id)
     .order('id', { ascending: false })
 
-  return <ResultsClient profile={profile} quizId={quizId} initialRows={(rows ?? []) as AttemptRow[]} />
+  if (!isOwner) {
+    query = query.eq('user_id', profile.id)
+  }
+
+  const { data: rows } = await query
+
+  return (
+    <ResultsClient
+      profile={profile}
+      quizId={quizId}
+      isOwner={isOwner}
+      initialRows={(rows ?? []) as AttemptRow[]}
+    />
+  )
 }

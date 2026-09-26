@@ -13,6 +13,8 @@ export type Quiz = {
   title: string
   description: string | null
   is_published: boolean
+  share_token: string
+  lockdown_enabled: boolean
   created_at: string
   updated_at: string
   questions_count?: number
@@ -43,6 +45,8 @@ export type AttemptQuestionView = {
   is_correct: boolean | null
 }
 
+export type TerminationReason = 'tab_switch' | 'blur' | 'fullscreen_exit' | 'devtools' | null
+
 export type AttemptPayload = {
   id: number
   quiz: { id: number; title: string; description: string | null }
@@ -50,6 +54,9 @@ export type AttemptPayload = {
   completed_at: string | null
   score: number | null
   total_questions: number | null
+  student_name: string | null
+  student_number: string | null
+  termination_reason: TerminationReason
   questions: AttemptQuestionView[]
 }
 
@@ -59,4 +66,7 @@ export type AttemptRow = {
   completed_at: string | null
   score: number | null
   total_questions: number | null
+  student_name: string | null
+  student_number: string | null
+  termination_reason: TerminationReason
 }

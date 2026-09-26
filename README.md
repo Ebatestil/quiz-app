@@ -3,7 +3,7 @@
 A rebuild of the original Laravel + React quiz app on **Next.js (App Router)**
 and **Supabase** (Postgres database + Auth), so it can be hosted for free.
 
-Same features as before:
+Same features as before, plus a new one:
 - Register / login
 - Create quizzes with multiple-choice or identification questions
 - Publish/unpublish quizzes
@@ -11,6 +11,9 @@ Same features as before:
 - Review past attempts
 - Admin panel to create/disable/enable users (the first account you register
   is automatically made an admin)
+- **New: Exam Mode** — share a quiz as a link students can take with no
+  account (just name + student ID), optionally locked down so switching
+  tabs/apps auto-submits the exam. See "Exam Mode" below.
 
 ## 1. Create a Supabase project
 
@@ -19,14 +22,20 @@ Same features as before:
    the entire contents of [`supabase/schema.sql`](./supabase/schema.sql),
    and run it. This creates all the tables, security policies, and database
    functions the app needs.
-3. Go to **Project Settings → API**. You'll need three values from this page:
+3. Run [`supabase/002_exam_mode.sql`](./supabase/002_exam_mode.sql) the same
+   way, right after. This adds the exam-link / lockdown feature (see below).
+   Then run [`supabase/003_prevent_duplicate_exam_attempts.sql`](./supabase/003_prevent_duplicate_exam_attempts.sql)
+   to enforce one shared-exam attempt per student name per quiz.
+4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
+   Students use this to take an exam without creating an account.
+5. Go to **Project Settings → API**. You'll need three values from this page:
    - **Project URL**
    - **anon / public key**
    - **service_role key** (click "reveal" — keep this one secret)
-4. (Optional but recommended) Under **Authentication → Providers → Email**,
-   turn **off** "Confirm email" while you're testing locally, so new accounts
-   can log in immediately without clicking an email link. Turn it back on
-   before going live if you want email verification.
+6. (Optional but recommended) Under **Authentication → Providers → Email**,
+   turn **off** "Confirm email" while you're testing locally, so new teacher
+   accounts can log in immediately without clicking an email link. Turn it
+   back on before going live if you want email verification.
 
 ## 2. Configure environment variables
 
@@ -72,6 +81,54 @@ generous):
 Supabase's free tier covers the database + auth side at no cost for small
 projects.
 
+## Exam Mode (for teachers)
+
+Any quiz can now be turned into a shareable exam:
+
+1. Open the quiz in the editor and **publish** it.
+2. Toggle **Exam Mode (lockdown)** if you want the security features below.
+3. Copy the **Exam Link** shown in the editor and send it to your students
+   (email, chat, LMS, however you'd share a link).
+4. Students open the link, type their name and (optional) student ID — no
+   account needed — and start the exam.
+5. See every submission, with score and status, on the quiz's **Results**
+   page. Click **Review** on any attempt to see a full question-by-question
+   breakdown.
+
+**What "lockdown" actually does:** a browser can't truly *prevent* someone
+from alt-tabbing or opening another app — no website has that power. What it
+*can* do, and what this app does, is:
+- Require the exam to be taken in fullscreen
+- Detect the moment the student switches tabs, switches apps, minimizes the
+  window, or exits fullscreen (all of these fire detectable browser events on
+  both desktop and mobile)
+- The instant that happens, the exam is **auto-submitted** with whatever was
+  answered so far, and it's logged so you can see exactly why an attempt
+  ended when you review it
+- Right-click, copy/paste, and common devtools shortcuts are also blocked
+
+This is the same approach tools like Google Forms' quiz lockdown use — it
+deters and catches casual cheating, but a determined user with a second
+physical device (e.g. a phone next to their laptop) can't be stopped by any
+website. If you need guaranteed lockdown, that requires managed/kiosk
+devices, which is outside what a web app can do.
+
+**Known limitations:**
+- Shared exams allow one attempt per full name per quiz, ignoring case and
+  repeated/leading/trailing whitespace. Student ID remains optional and does
+  not change this rule. Unfinished and auto-submitted attempts also count;
+  reopening the link does not resume an attempt. Existing attempts are kept
+  and checked after migration 003 is applied. Different students with the
+  same full name must use distinct names agreed with their teacher. Names
+  are self-reported: entering a different name can bypass this restriction.
+- `blur` events (used to detect app-switching) can occasionally fire from
+  innocuous things like clicking a browser extension icon — treat a single
+  flagged attempt as "worth a look," not automatic proof of cheating.
+- iOS Safari's fullscreen support varies by version; it works well on modern
+  versions (16.4+) and on Android Chrome. Older iOS Safari has limited
+  fullscreen support for web pages.
+
+
 ## How it's structured
 
 - `supabase/schema.sql` — all tables, Row Level Security policies, and
@@ -79,6 +136,12 @@ projects.
   `submit_answer`, `complete_attempt`) replicate the original Laravel
   `AttemptController` logic exactly, including keeping the correct answer
   hidden from the quiz-taker until they finish the attempt.
+- `supabase/002_exam_mode.sql` — adds shareable exam links, anonymous
+  student sign-in, and lockdown auto-submit (`start_public_attempt`,
+  `report_violation`).
+- `app/exam/[token]/` — the public, no-login exam page students land on.
+- `app/quizzes/[id]/results/[attemptId]/` — per-question review page for a
+  single attempt (teachers reviewing a student's submission).
 - `app/` — Next.js App Router pages. Most pages are a small server component
   (fetches the logged-in user's profile + initial data) plus a
   `*Client.tsx` component (the interactive part, ported closely from the

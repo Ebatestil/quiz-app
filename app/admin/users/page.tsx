@@ -12,6 +12,7 @@ export default async function AdminUsersPage() {
   const { data: users } = await supabaseAdmin
     .from('profiles')
     .select('id, name, email, is_admin, disabled_at, created_at')
+    .eq('is_anonymous', false)
     .order('created_at', { ascending: false })
 
   return <AdminUsersClient profile={profile} initialUsers={(users ?? []) as Profile[]} />

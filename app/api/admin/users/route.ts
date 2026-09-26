@@ -10,6 +10,7 @@ export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('id, name, email, is_admin, disabled_at, created_at')
+    .eq('is_anonymous', false)
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ message: error.message }, { status: 500 })
