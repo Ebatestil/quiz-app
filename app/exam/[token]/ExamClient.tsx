@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { exitFullscreen, isFullscreen, requestFullscreen } from '@/lib/fullscreen'
+import {
+  exitFullscreen,
+  isFullscreen,
+  requestFullscreen,
+} from '@/lib/fullscreen'
 import type { AttemptPayload, TerminationReason } from '@/lib/types'
+import { Brand } from '@/components/AppShell'
 
 type QuizMeta = {
   id: number
@@ -14,7 +19,8 @@ type QuizMeta = {
   lockdown_enabled: boolean
 } | null
 
-type Phase = 'landing' | 'starting' | 'taking' | 'completed' | 'terminated' | 'error'
+type Phase =
+  'landing' | 'starting' | 'taking' | 'completed' | 'terminated' | 'error'
 
 const VIOLATION_LABELS: Record<string, string> = {
   tab_switch: 'You switched tabs or apps.',
@@ -26,7 +32,9 @@ const VIOLATION_LABELS: Record<string, string> = {
 export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   const { token, quiz } = props
 
-  const [phase, setPhase] = useState<Phase>(quiz?.is_published ? 'landing' : 'error')
+  const [phase, setPhase] = useState<Phase>(
+    quiz?.is_published ? 'landing' : 'error',
+  )
   const [name, setName] = useState('')
   const [studentNumber, setStudentNumber] = useState('')
   const [error, setError] = useState<string | null>(
@@ -38,7 +46,8 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   const [idx, setIdx] = useState(0)
   const [textAnswer, setTextAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [terminationReason, setTerminationReason] = useState<TerminationReason>(null)
+  const [terminationReason, setTerminationReason] =
+    useState<TerminationReason>(null)
 
   const terminatedRef = useRef(false)
   const phaseRef = useRef<Phase>(phase)
@@ -52,7 +61,12 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   const lockdownOn = !!quiz?.lockdown_enabled
 
   const finishWithViolation = useCallback(async (type: string) => {
-    if (terminatedRef.current || phaseRef.current !== 'taking' || !attemptIdRef.current) return
+    if (
+      terminatedRef.current ||
+      phaseRef.current !== 'taking' ||
+      !attemptIdRef.current
+    )
+      return
     terminatedRef.current = true
 
     const supabase = createClient()
@@ -84,7 +98,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     function onKeyDown(e: KeyboardEvent) {
       const blocked =
         e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && ['I', 'J', 'C', 'i', 'j', 'c'].includes(e.key)) ||
+        (e.ctrlKey &&
+          e.shiftKey &&
+          ['I', 'J', 'C', 'i', 'j', 'c'].includes(e.key)) ||
         (e.ctrlKey && (e.key === 'u' || e.key === 'U'))
       if (blocked) {
         e.preventDefault()
@@ -164,11 +180,14 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
         return
       }
 
-      const { data, error: rpcError } = await supabase.rpc('start_public_attempt', {
-        p_share_token: token,
-        p_student_name: name.trim(),
-        p_student_number: studentNumber.trim() || null,
-      })
+      const { data, error: rpcError } = await supabase.rpc(
+        'start_public_attempt',
+        {
+          p_share_token: token,
+          p_student_name: name.trim(),
+          p_student_number: studentNumber.trim() || null,
+        },
+      )
 
       if (rpcError) {
         setError(rpcError.message)
@@ -184,7 +203,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       setTextAnswer('')
       setPhase('taking')
     } catch {
-      setError('Could not start the exam. Please try again or contact your teacher.')
+      setError(
+        'Could not start the exam. Please try again or contact your teacher.',
+      )
       setPhase('landing')
       await exitFullscreen()
     } finally {
@@ -194,7 +215,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
   async function refresh(attemptId: number) {
     const supabase = createClient()
-    const { data } = await supabase.rpc('get_attempt', { p_attempt_id: attemptId })
+    const { data } = await supabase.rpc('get_attempt', {
+      p_attempt_id: attemptId,
+    })
     setAttempt(data as AttemptPayload)
   }
 
@@ -238,7 +261,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     setSubmitting(true)
     terminatedRef.current = true
     const supabase = createClient()
-    const { data } = await supabase.rpc('complete_attempt', { p_attempt_id: attempt.id })
+    const { data } = await supabase.rpc('complete_attempt', {
+      p_attempt_id: attempt.id,
+    })
     await exitFullscreen()
     setAttempt(data as AttemptPayload)
     setPhase('completed')
@@ -250,7 +275,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   if (phase === 'error' || !quiz) {
     return (
       <Shell>
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-600">
           {error ?? 'This exam link is invalid.'}
         </div>
       </Shell>
@@ -261,20 +286,26 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     return (
       <Shell>
         <div className="text-center">
-          <div className="text-sm font-semibold uppercase tracking-[0.18em] text-red-600">
+          <div className="text-sm font-semibold uppercase tracking-[0.1em] text-red-600">
             Exam ended automatically
           </div>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-900">Security violation detected</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">
+            Security violation detected
+          </h1>
           <p className="mt-3 text-sm text-slate-600">
-            {VIOLATION_LABELS[terminationReason ?? ''] ?? 'A security rule was triggered.'} Your exam was
-            submitted automatically as-is.
+            {VIOLATION_LABELS[terminationReason ?? ''] ??
+              'A security rule was triggered.'}{' '}
+            Your exam was submitted automatically as-is.
           </p>
           {attempt?.score !== null && attempt?.total_questions !== null ? (
             <div className="mt-6 text-3xl font-semibold text-slate-900">
               {attempt?.score}/{attempt?.total_questions}
             </div>
           ) : null}
-          <p className="mt-6 text-xs text-slate-400">You may close this window. Contact your teacher if you believe this was a mistake.</p>
+          <p className="mt-6 text-xs text-slate-400">
+            You may close this window. Contact your teacher if you believe this
+            was a mistake.
+          </p>
         </div>
       </Shell>
     )
@@ -284,8 +315,12 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     return (
       <Shell>
         <div className="text-center">
-          <div className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">Submitted</div>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-900">Exam complete</h1>
+          <div className="text-sm font-semibold uppercase tracking-[0.1em] text-emerald-600">
+            Submitted
+          </div>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">
+            Exam complete
+          </h1>
           <div className="mt-4 text-4xl font-semibold text-slate-900">
             {attempt.score}/{attempt.total_questions}
           </div>
@@ -300,58 +335,76 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   if (phase === 'landing' || phase === 'starting') {
     return (
       <Shell>
-        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">Exam</div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{quiz.title}</h1>
-        {quiz.description ? <p className="mt-2 text-sm text-slate-500">{quiz.description}</p> : null}
+        <div className="text-sm font-semibold uppercase tracking-[0.1em] text-emerald-600">
+          Exam
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+          {quiz.title}
+        </h1>
+        {quiz.description ? (
+          <p className="mt-2 text-sm text-slate-500">{quiz.description}</p>
+        ) : null}
         <p className="mt-4 text-sm text-slate-600">
-          Only one attempt per full name is allowed for this quiz, including unfinished attempts.
-          Check your name before starting. If you have already started, contact your teacher.
+          Only one attempt per full name is allowed for this quiz, including
+          unfinished attempts. Check your name before starting. If you have
+          already started, contact your teacher.
         </p>
 
         {lockdownOn ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-            This exam is locked down: it will open in fullscreen, and switching tabs, switching apps, or
-            exiting fullscreen will submit your exam immediately. Close other apps and make sure you have
-            time to finish before starting.
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+            This exam is locked down: it will open in fullscreen, and switching
+            tabs, switching apps, or exiting fullscreen will submit your exam
+            immediately. Close other apps and make sure you have time to finish
+            before starting.
           </div>
         ) : null}
 
         {error ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+            {error}
+          </div>
         ) : null}
         {fullscreenError ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
             {fullscreenError}
           </div>
         ) : null}
 
         <form onSubmit={startExam} className="mt-6 space-y-3">
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">Full name</span>
+            <span className="text-sm font-medium text-slate-700">
+              Full name
+            </span>
             <input
               required
               disabled={phase === 'starting'}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500"
+              className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
               placeholder="Juan Dela Cruz"
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">Student ID (optional)</span>
+            <span className="text-sm font-medium text-slate-700">
+              Student ID (optional)
+            </span>
             <input
               disabled={phase === 'starting'}
               value={studentNumber}
               onChange={(e) => setStudentNumber(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500"
+              className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
               placeholder="2023-00123"
             />
           </label>
           <button
             disabled={phase === 'starting'}
-            className="w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-60"
+            className="btn btn-primary w-full disabled:opacity-60"
           >
-            {phase === 'starting' ? 'Starting...' : lockdownOn ? 'Start Exam (Fullscreen)' : 'Start Exam'}
+            {phase === 'starting'
+              ? 'Starting...'
+              : lockdownOn
+                ? 'Start Exam (Fullscreen)'
+                : 'Start Exam'}
           </button>
         </form>
       </Shell>
@@ -360,13 +413,25 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
   // phase === 'taking'
   if (!attempt || !q) {
-    return <Shell><div className="text-sm text-slate-500">Loading...</div></Shell>
+    return (
+      <Shell>
+        <div className="text-sm text-slate-500">Loading...</div>
+      </Shell>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb] px-4 py-8 text-slate-900 sm:px-8">
-      <div className="mx-auto max-w-3xl">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="exam-shell">
+      <div className="exam-brandbar">
+        <Brand />
+        <span>{lockdownOn ? 'Fullscreen exam' : 'Student exam'}</span>
+      </div>
+      <main className="exam-taking">
+        <header className="exam-taking-heading">
+          <span className="eyebrow">Your exam</span>
+          <h1>{quiz.title}</h1>
+        </header>
+        <div className="exam-paper">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium text-slate-600">
               Question {idx + 1}/{attempt.questions.length}
@@ -375,12 +440,16 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
           </div>
           <div className="mt-4 h-2 rounded-full bg-slate-100">
             <div
-              className="h-2 rounded-full bg-violet-600 transition-all"
-              style={{ width: `${((idx + 1) / attempt.questions.length) * 100}%` }}
+              className="h-2 rounded-full bg-emerald-600 transition-all"
+              style={{
+                width: `${((idx + 1) / attempt.questions.length) * 100}%`,
+              }}
             />
           </div>
 
-          <div className="mt-6 text-xl font-semibold text-slate-900">{q.prompt}</div>
+          <div className="mt-6 text-xl font-semibold text-slate-900">
+            {q.prompt}
+          </div>
 
           {q.type === 'multiple_choice' ? (
             <div className="mt-6 space-y-3">
@@ -389,16 +458,20 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                 return (
                   <button
                     key={optIdx}
+                    aria-pressed={selected}
                     disabled={submitting}
                     onClick={() => answer(optIdx)}
                     className={[
-                      'w-full rounded-2xl border px-4 py-4 text-left text-sm transition',
-                      'border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/50',
-                      selected ? 'border-violet-500 bg-violet-50' : '',
+                      'answer-option w-full rounded-md border px-4 py-4 text-left text-sm transition',
+                      'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50',
+                      selected ? 'border-emerald-500 bg-emerald-50' : '',
                       submitting ? 'opacity-70' : '',
                     ].join(' ')}
                   >
-                    {opt}
+                    <span className="answer-letter" aria-hidden="true">
+                      {String.fromCharCode(65 + optIdx)}
+                    </span>
+                    <span>{opt}</span>
                   </button>
                 )
               })}
@@ -410,21 +483,21 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                 onChange={(e) => setTextAnswer(e.target.value)}
                 disabled={submitting}
                 placeholder="Type your answer here"
-                className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 disabled:opacity-60"
+                className="min-h-32 w-full rounded-md border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 disabled:opacity-60"
               />
               <button
                 onClick={submitTextAnswer}
                 disabled={submitting || !textAnswer.trim()}
-                className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                className="btn btn-primary disabled:opacity-50"
               >
                 Save Answer
               </button>
             </div>
           )}
 
-          <div className="mt-6 flex items-center justify-between gap-3">
+          <div className="exam-navigation mt-6 flex items-center justify-between gap-3">
             <button
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="btn disabled:opacity-50"
               onClick={() => setIdx((i) => Math.max(0, i - 1))}
               disabled={idx === 0}
             >
@@ -432,15 +505,17 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             </button>
             <div className="flex items-center gap-3">
               <button
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="btn disabled:opacity-50"
                 onClick={finishExam}
                 disabled={submitting}
               >
                 Submit Exam
               </button>
               <button
-                className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-                onClick={() => setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))}
+                className="btn btn-primary disabled:opacity-50"
+                onClick={() =>
+                  setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))
+                }
                 disabled={idx === attempt.questions.length - 1}
               >
                 Next
@@ -448,17 +523,22 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
 
 function Shell(props: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6f7fb] px-6 py-12 text-slate-900">
-      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        {props.children}
+    <div className="exam-shell">
+      <div className="exam-brandbar">
+        <Brand />
+        <span>Student exam</span>
       </div>
+      <main className="exam-entry">{props.children}</main>
+      <p className="exam-caption">
+        Take your time. Read each question carefully.
+      </p>
     </div>
   )
 }

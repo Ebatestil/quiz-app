@@ -1,12 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Area, Field, Surface } from '@/components/AppShell'
 import type { Profile, Question, QuestionType, Quiz } from '@/lib/types'
+
+const subscribeToOrigin = () => () => {}
+const getOrigin = () => window.location.origin
+const getServerOrigin = () => ''
 
 export function QuizEditorClient(props: {
   profile: Profile
@@ -27,8 +31,11 @@ export function QuizEditorClient(props: {
   const [copied, setCopied] = useState(false)
 
   const [prompt, setPrompt] = useState('')
-  const [questionType, setQuestionType] = useState<QuestionType>('multiple_choice')
-  const [optionsText, setOptionsText] = useState('Option A\nOption B\nOption C\nOption D')
+  const [questionType, setQuestionType] =
+    useState<QuestionType>('multiple_choice')
+  const [optionsText, setOptionsText] = useState(
+    'Option A\nOption B\nOption C\nOption D',
+  )
   const options = useMemo(
     () =>
       optionsText
@@ -76,8 +83,12 @@ export function QuizEditorClient(props: {
         type: questionType,
         prompt: prompt.trim(),
         options: questionType === 'multiple_choice' ? options : null,
-        correct_index: questionType === 'multiple_choice' ? correctIndex : null,
-        answer_text: questionType === 'identification' ? answerText.trim() : null,
+        correct_index:
+          questionType === 'multiple_choice'
+            ? Math.min(correctIndex, Math.max(0, options.length - 1))
+            : null,
+        answer_text:
+          questionType === 'identification' ? answerText.trim() : null,
         explanation: explanation.trim() ? explanation.trim() : null,
       })
       .select()
@@ -110,7 +121,12 @@ export function QuizEditorClient(props: {
     router.refresh()
   }
 
-  const examLink = typeof window !== 'undefined' ? `${window.location.origin}/exam/${quiz.share_token}` : ''
+  const origin = useSyncExternalStore(
+    subscribeToOrigin,
+    getOrigin,
+    getServerOrigin,
+  )
+  const examLink = origin ? `${origin}/exam/${quiz.share_token}` : ''
 
   async function copyExamLink() {
     if (!examLink) return
@@ -121,26 +137,20 @@ export function QuizEditorClient(props: {
 
   return (
     <AppShell
-      title="Create / Edit Quiz"
-      subtitle="Update quiz details and manage questions."
+      title={quiz.title}
+      subtitle="Quiz editor · Make every question count."
       profile={profile}
       actions={
         <>
-          <Link
-            href="/"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
+          <Link href="/" className="btn ">
             Back
           </Link>
-          <Link
-            href={`/quizzes/${quizId}/take`}
-            className="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-600"
-          >
+          <Link href={`/quizzes/${quizId}/take`} className="btn btn-primary ">
             Start Quiz
           </Link>
           <button
             onClick={deleteQuiz}
-            className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
+            className="rounded-md border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
           >
             Delete
           </button>
@@ -148,26 +158,43 @@ export function QuizEditorClient(props: {
       }
     >
       {error ? (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+          {error}
+        </div>
       ) : null}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.4fr]">
         <div className="space-y-6">
-          <Surface title="Quiz Details">
+          <Surface
+            title="01 / Quiz details"
+            subtitle="The essentials your students will see."
+          >
             <form onSubmit={saveQuiz} className="space-y-3">
-              <Field label="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <Field
+                label="Quiz title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
               <Area
                 label="Description"
                 className="min-h-24"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
-              <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <span className="text-sm font-medium text-slate-700">Published</span>
-                <input type="checkbox" checked={isPublished} onChange={(e) => setIsPublished(e.target.checked)} />
+              <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                <span className="text-sm font-medium text-slate-700">
+                  Published
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isPublished}
+                  onChange={(e) => setIsPublished(e.target.checked)}
+                />
               </label>
-              <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
-                  <div className="text-sm font-medium text-slate-700">Exam Mode (lockdown)</div>
+                  <div className="text-sm font-medium text-slate-700">
+                    Exam Mode (lockdown)
+                  </div>
                   <div className="text-xs text-slate-500">
                     Fullscreen required; switching tabs/apps auto-submits.
                   </div>
@@ -178,43 +205,51 @@ export function QuizEditorClient(props: {
                   onChange={(e) => setLockdownEnabled(e.target.checked)}
                 />
               </label>
-              <button className="w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-medium text-white hover:bg-violet-500">
-                Save Quiz
-              </button>
+              <button className="btn btn-primary w-full">Save Quiz</button>
             </form>
           </Surface>
 
-          <Surface title="Exam Link" subtitle="Share this with students — no account needed to take it.">
+          <Surface
+            title="Share with your students"
+            subtitle="One link. No student accounts needed."
+          >
             {isPublished ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <code className="flex-1 truncate text-sm text-slate-700">{examLink}</code>
+                <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                  <code className="flex-1 truncate text-sm text-slate-700">
+                    {examLink}
+                  </code>
                   <button
                     onClick={copyExamLink}
-                    className="shrink-0 rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-500"
+                    className="btn btn-primary shrink-0"
                   >
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
                 {lockdownEnabled ? (
                   <p className="text-xs text-amber-600">
-                    Exam Mode is on: students must allow fullscreen, and the attempt auto-submits the
-                    instant they switch tabs, switch apps, or exit fullscreen.
+                    Exam Mode is on: students must allow fullscreen, and the
+                    attempt auto-submits the instant they switch tabs, switch
+                    apps, or exit fullscreen.
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500">
-                    Exam Mode is off — students can take this like a normal untimed quiz, no lockdown.
+                    Exam Mode is off — students can take this like a normal
+                    untimed quiz, no lockdown.
                   </p>
                 )}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                 Publish this quiz to activate its exam link.
               </div>
             )}
           </Surface>
 
-          <Surface title="Add Question">
+          <Surface
+            title="02 / Write a question"
+            subtitle="Choose a format, then add your answer and explanation."
+          >
             <form onSubmit={addQuestion} className="space-y-3">
               <Area
                 label="Question"
@@ -225,11 +260,15 @@ export function QuizEditorClient(props: {
                 required
               />
               <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-slate-700">Question type</span>
+                <span className="text-sm font-medium text-slate-700">
+                  Question type
+                </span>
                 <select
                   value={questionType}
-                  onChange={(e) => setQuestionType(e.target.value as QuestionType)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-violet-500"
+                  onChange={(e) =>
+                    setQuestionType(e.target.value as QuestionType)
+                  }
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500"
                 >
                   <option value="multiple_choice">Multiple choice</option>
                   <option value="identification">Identification</option>
@@ -243,14 +282,23 @@ export function QuizEditorClient(props: {
                     value={optionsText}
                     onChange={(e) => setOptionsText(e.target.value)}
                   />
-                  <Field
-                    label="Correct answer index"
-                    type="number"
-                    min={0}
-                    max={Math.max(0, options.length - 1)}
-                    value={String(correctIndex)}
-                    onChange={(e) => setCorrectIndex(Number(e.target.value))}
-                  />
+                  <label className="form-field">
+                    <span>Correct answer</span>
+                    <select
+                      className="form-input"
+                      value={Math.min(
+                        correctIndex,
+                        Math.max(0, options.length - 1),
+                      )}
+                      onChange={(e) => setCorrectIndex(Number(e.target.value))}
+                    >
+                      {options.map((option, index) => (
+                        <option key={index} value={index}>
+                          {index + 1}. {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </>
               ) : (
                 <Field
@@ -267,41 +315,46 @@ export function QuizEditorClient(props: {
                 value={explanation}
                 onChange={(e) => setExplanation(e.target.value)}
               />
-              <button className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-600">
-                + Add Question
-              </button>
+              <button className="btn btn-primary w-full">+ Add Question</button>
             </form>
           </Surface>
         </div>
 
         <Surface
-          title="Questions"
+          title="Question collection"
           subtitle={`${questions.length} question${questions.length === 1 ? '' : 's'} in this quiz`}
         >
           {questions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
               No questions yet.
             </div>
           ) : (
             <div className="space-y-3">
               {questions.map((q, index) => (
-                <div key={q.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div
+                  key={q.id}
+                  className="rounded-md border border-slate-200 bg-slate-50/80 p-4"
+                >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex-1">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+                      <div className="text-xs font-semibold uppercase tracking-[0.1em] text-emerald-600">
                         Question {index + 1}
                       </div>
-                      <div className="mt-2 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
-                        {q.type === 'multiple_choice' ? 'Multiple choice' : 'Identification'}
+                      <div className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        {q.type === 'multiple_choice'
+                          ? 'Multiple choice'
+                          : 'Identification'}
                       </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-900">{q.prompt}</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {q.prompt}
+                      </div>
                       {q.type === 'multiple_choice' ? (
                         <div className="mt-3 space-y-2">
                           {(q.options ?? []).map((opt, idx) => (
                             <div
                               key={idx}
                               className={[
-                                'rounded-xl border px-3 py-2 text-sm',
+                                'rounded-md border px-3 py-2 text-sm',
                                 idx === q.correct_index
                                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                   : 'border-slate-200 bg-white text-slate-600',
@@ -312,15 +365,19 @@ export function QuizEditorClient(props: {
                           ))}
                         </div>
                       ) : (
-                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                           Correct answer: {q.answer_text}
                         </div>
                       )}
-                      {q.explanation ? <p className="mt-3 text-sm text-slate-500">{q.explanation}</p> : null}
+                      {q.explanation ? (
+                        <p className="mt-3 text-sm text-slate-500">
+                          {q.explanation}
+                        </p>
+                      ) : null}
                     </div>
                     <button
                       onClick={() => removeQuestion(q.id)}
-                      className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                      className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                     >
                       Remove
                     </button>

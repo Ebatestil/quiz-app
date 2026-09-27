@@ -36,7 +36,7 @@ export default async function AttemptReviewPage({
       actions={
         <Link
           href={`/quizzes/${quizId}/results`}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="btn "
         >
           Back to Results
         </Link>
@@ -63,7 +63,7 @@ export default async function AttemptReviewPage({
           </div>
 
           {attempt.termination_reason ? (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {TERMINATION_LABELS[attempt.termination_reason] ?? `Auto-submitted: ${attempt.termination_reason}`}
             </div>
           ) : null}
@@ -72,7 +72,7 @@ export default async function AttemptReviewPage({
         <div className="space-y-4">
           {attempt.questions.map((q, index) => (
             <Surface key={q.id}>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+              <div className="text-xs font-semibold uppercase tracking-[0.1em] text-emerald-600">
                 Question {index + 1}
               </div>
               <div className="mt-2 text-base font-semibold text-slate-900">{q.prompt}</div>
@@ -85,7 +85,7 @@ export default async function AttemptReviewPage({
                       <div
                         key={optIdx}
                         className={[
-                          'rounded-xl border px-3 py-2 text-sm',
+                          'rounded-md border px-3 py-2 text-sm',
                           wasSelected && q.is_correct
                             ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                             : wasSelected && !q.is_correct
@@ -102,7 +102,7 @@ export default async function AttemptReviewPage({
               ) : (
                 <div
                   className={[
-                    'mt-3 rounded-xl border px-3 py-2 text-sm',
+                    'mt-3 rounded-md border px-3 py-2 text-sm',
                     q.is_correct
                       ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                       : 'border-red-300 bg-red-50 text-red-700',
@@ -113,7 +113,7 @@ export default async function AttemptReviewPage({
               )}
 
               {q.explanation ? (
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                   <span className="font-semibold text-slate-900">Explanation: </span>
                   {q.explanation}
                 </div>

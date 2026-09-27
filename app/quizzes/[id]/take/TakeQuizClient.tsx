@@ -22,7 +22,9 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
     setLoading(true)
     setError(null)
     const supabase = createClient()
-    const { data, error: err } = await supabase.rpc('start_attempt', { p_quiz_id: quizId })
+    const { data, error: err } = await supabase.rpc('start_attempt', {
+      p_quiz_id: quizId,
+    })
     if (err) {
       setError(err.message)
       setLoading(false)
@@ -54,7 +56,9 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
 
   async function refresh(attemptId: number) {
     const supabase = createClient()
-    const { data } = await supabase.rpc('get_attempt', { p_attempt_id: attemptId })
+    const { data } = await supabase.rpc('get_attempt', {
+      p_attempt_id: attemptId,
+    })
     setAttempt(data as AttemptPayload)
   }
 
@@ -90,21 +94,41 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
     if (!attempt || isCompleted) return
     setSubmitting(true)
     const supabase = createClient()
-    const { data } = await supabase.rpc('complete_attempt', { p_attempt_id: attempt.id })
+    const { data } = await supabase.rpc('complete_attempt', {
+      p_attempt_id: attempt.id,
+    })
     setAttempt(data as AttemptPayload)
     setSubmitting(false)
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#f6f7fb]" />
+    return (
+      <AppShell title="Your quiz" profile={profile}>
+        <Surface>
+          <p role="status" className="text-sm text-slate-500">
+            Preparing your questions…
+          </p>
+        </Surface>
+      </AppShell>
+    )
   }
 
   if (error) {
     return (
-      <AppShell title="Taking Quiz" profile={profile} actions={<Link href="/" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Exit</Link>}>
+      <AppShell
+        title="Taking Quiz"
+        profile={profile}
+        actions={
+          <Link href="/" className="btn ">
+            Exit
+          </Link>
+        }
+      >
         <div className="mx-auto max-w-2xl">
           <Surface>
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>
+            <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+              {error}
+            </div>
           </Surface>
         </div>
       </AppShell>
@@ -112,7 +136,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
   }
 
   if (!attempt) {
-    return <div className="min-h-screen bg-[#f6f7fb]" />
+    return <div className="min-h-screen bg-background" />
   }
 
   return (
@@ -122,17 +146,11 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
       profile={profile}
       actions={
         <>
-          <Link
-            href="/"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
+          <Link href="/" className="btn ">
             Exit
           </Link>
           {isCompleted ? (
-            <button
-              onClick={() => start()}
-              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
-            >
+            <button onClick={() => start()} className="btn btn-primary ">
               Retry
             </button>
           ) : null}
@@ -141,23 +159,22 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
     >
       <div className="mx-auto max-w-4xl space-y-6">
         {isCompleted ? (
-          <Surface className="bg-gradient-to-r from-emerald-50 to-violet-50">
+          <Surface className="bg-emerald-50">
             <div className="text-center">
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">Great job</div>
+              <div className="eyebrow">Your score</div>
               <div className="mt-2 text-4xl font-semibold text-slate-900">
                 {attempt.score}/{attempt.total_questions}
               </div>
-              <div className="mt-2 text-sm text-slate-500">You have completed the quiz.</div>
+              <div className="mt-2 text-sm text-slate-500">
+                You have completed the quiz.
+              </div>
               <div className="mt-5 flex flex-wrap justify-center gap-3">
-                <Link
-                  href={`/quizzes/${quizId}/results`}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
+                <Link href={`/quizzes/${quizId}/results`} className="btn ">
                   Review Attempts
                 </Link>
                 <button
                   onClick={() => router.push('/')}
-                  className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
+                  className="btn btn-primary "
                 >
                   Back to Dashboard
                 </button>
@@ -167,41 +184,57 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
         ) : (
           <Surface>
             <div className="flex items-center justify-between gap-4">
-              <div className="text-sm font-medium text-slate-600">Question {progress}</div>
-              <div className="text-sm text-slate-500">{attempt.questions.length} total questions</div>
+              <div className="text-sm font-medium text-slate-600">
+                Question {progress}
+              </div>
+              <div className="text-sm text-slate-500">
+                {attempt.questions.length} total questions
+              </div>
             </div>
             <div className="mt-4 h-2 rounded-full bg-slate-100">
               <div
-                className="h-2 rounded-full bg-violet-600 transition-all"
-                style={{ width: `${((idx + 1) / attempt.questions.length) * 100}%` }}
+                className="h-2 rounded-full bg-emerald-600 transition-all"
+                style={{
+                  width: `${((idx + 1) / attempt.questions.length) * 100}%`,
+                }}
               />
             </div>
 
-            <div className="mt-6 text-xl font-semibold text-slate-900">{q?.prompt}</div>
+            <div className="mt-6 text-xl font-semibold text-slate-900">
+              {q?.prompt}
+            </div>
 
             {q?.type === 'multiple_choice' ? (
               <div className="mt-6 space-y-3">
                 {(q.options ?? []).map((opt, optIdx) => {
                   const selected = q.selected_index === optIdx
                   const showCorrectness = isCompleted && q.is_correct !== null
-                  const isCorrectOption = showCorrectness && q.is_correct && selected
-                  const isWrongSelected = showCorrectness && !q.is_correct && selected
+                  const isCorrectOption =
+                    showCorrectness && q.is_correct && selected
+                  const isWrongSelected =
+                    showCorrectness && !q.is_correct && selected
 
                   return (
                     <button
                       key={optIdx}
+                      aria-pressed={selected}
                       disabled={submitting || isCompleted}
                       onClick={() => answer(optIdx)}
                       className={[
-                        'w-full rounded-2xl border px-4 py-4 text-left text-sm transition',
-                        'border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/50',
-                        selected ? 'border-violet-500 bg-violet-50' : '',
-                        isCorrectOption ? 'border-emerald-300 bg-emerald-50' : '',
+                        'answer-option w-full rounded-md border px-4 py-4 text-left text-sm transition',
+                        'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50',
+                        selected ? 'border-emerald-500 bg-emerald-50' : '',
+                        isCorrectOption
+                          ? 'border-emerald-300 bg-emerald-50'
+                          : '',
                         isWrongSelected ? 'border-red-300 bg-red-50' : '',
                         submitting ? 'opacity-70' : '',
                       ].join(' ')}
                     >
-                      {opt}
+                      <span className="answer-letter" aria-hidden="true">
+                        {String.fromCharCode(65 + optIdx)}
+                      </span>
+                      <span>{opt}</span>
                     </button>
                   )
                 })}
@@ -213,13 +246,13 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                   onChange={(e) => setTextAnswer(e.target.value)}
                   disabled={submitting || isCompleted}
                   placeholder="Type your answer here"
-                  className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 disabled:opacity-60"
+                  className="min-h-32 w-full rounded-md border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 disabled:opacity-60"
                 />
                 {!isCompleted ? (
                   <button
                     onClick={submitTextAnswer}
                     disabled={submitting || !textAnswer.trim()}
-                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                    className="btn btn-primary disabled:opacity-50"
                   >
                     Save Answer
                   </button>
@@ -227,7 +260,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                 {isCompleted && q ? (
                   <div
                     className={[
-                      'rounded-2xl border px-4 py-3 text-sm',
+                      'rounded-md border px-4 py-3 text-sm',
                       q.is_correct
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : 'border-red-200 bg-red-50 text-red-700',
@@ -240,15 +273,15 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
             )}
 
             {isCompleted && q?.explanation ? (
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="font-semibold text-slate-900">Explanation</div>
                 <div className="mt-1">{q.explanation}</div>
               </div>
             ) : null}
 
-            <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="exam-navigation mt-6 flex items-center justify-between gap-3">
               <button
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="btn disabled:opacity-50"
                 onClick={() => setIdx((i) => Math.max(0, i - 1))}
                 disabled={idx === 0}
               >
@@ -257,7 +290,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
               <div className="flex items-center gap-3">
                 {!isCompleted ? (
                   <button
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="btn disabled:opacity-50"
                     onClick={complete}
                     disabled={submitting}
                   >
@@ -265,8 +298,10 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                   </button>
                 ) : null}
                 <button
-                  className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-                  onClick={() => setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))}
+                  className="btn btn-primary disabled:opacity-50"
+                  onClick={() =>
+                    setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))
+                  }
                   disabled={idx === attempt.questions.length - 1}
                 >
                   Next

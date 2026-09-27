@@ -5,9 +5,77 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
 
-type NavItem = {
-  label: string
-  to: string
+export function Icon({
+  name,
+  className = '',
+}: {
+  name:
+    'book' | 'grid' | 'users' | 'arrow' | 'plus' | 'search' | 'logout' | 'check'
+  className?: string
+}) {
+  const paths = {
+    book: (
+      <>
+        <path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4z" />
+        <path d="M13 7a3 3 0 0 1 3-3h4v15h-3a4 4 0 0 0-4 2" />
+      </>
+    ),
+    grid: (
+      <>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </>
+    ),
+    users: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" />
+      </>
+    ),
+    arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    search: (
+      <>
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </>
+    ),
+    logout: (
+      <>
+        <path d="M10 4H4v16h6M10 12h11m-4-4 4 4-4 4" />
+      </>
+    ),
+    check: <path d="m5 12 4 4L19 6" />,
+  }
+  return (
+    <svg
+      className={`ui-icon ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  )
+}
+
+export function Brand({ light = false }: { light?: boolean }) {
+  return (
+    <span className={`brand ${light ? 'brand-light' : ''}`}>
+      <span className="brand-mark">
+        <Icon name="book" />
+      </span>
+      <span>
+        Quiz App<span className="brand-period">.</span>
+      </span>
+    </span>
+  )
 }
 
 export function AppShell(props: {
@@ -20,86 +88,91 @@ export function AppShell(props: {
   const { profile } = props
   const router = useRouter()
   const pathname = usePathname()
-
-  const items: NavItem[] = profile.is_admin
-    ? [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Users', to: '/admin/users' },
-      ]
-    : [{ label: 'Dashboard', to: '/' }]
+  const items = [
+    { label: 'My quizzes', to: '/', icon: 'grid' as const },
+    ...(profile.is_admin
+      ? [{ label: 'People', to: '/admin/users', icon: 'users' as const }]
+      : []),
+  ]
 
   async function logout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await createClient().auth.signOut()
     router.replace('/login')
     router.refresh()
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb] text-slate-900">
-      <div className="flex min-h-screen w-full">
-        <aside className="hidden w-64 border-r border-slate-200 bg-white px-5 py-6 lg:block">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-sm font-bold text-white">
-              QA
-            </div>
+    <div className="workspace">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <aside className="sidebar">
+        <Link href="/" aria-label="Quiz App home">
+          <Brand light />
+        </Link>
+        <div className="sidebar-label">Workspace</div>
+        <nav className="workspace-nav" aria-label="Main navigation">
+          {items.map((item) => {
+            const active =
+              item.to === '/'
+                ? pathname === '/' || pathname.startsWith('/quizzes')
+                : pathname.startsWith(item.to)
+            return (
+              <Link
+                key={item.to}
+                href={item.to}
+                aria-current={active ? 'page' : undefined}
+                className={active ? 'nav-active' : ''}
+              >
+                <Icon name={item.icon} />
+                {item.label}
+                {active && <span className="nav-dot" />}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="account">
+            <span className="avatar">
+              {(profile.name || 'U').slice(0, 1).toUpperCase()}
+            </span>
             <div>
-              <div className="text-sm font-semibold text-slate-900">Quiz App</div>
-              <div className="text-xs text-slate-500">{profile.is_admin ? 'Admin panel' : ''}</div>
+              <strong>{profile.name || 'Your account'}</strong>
+              <span>{profile.is_admin ? 'Administrator' : 'Quiz creator'}</span>
             </div>
           </div>
-
-          <nav className="mt-8 flex flex-col gap-2">
-            {items.map((item) => {
-              const active = pathname === item.to
-              return (
-                <Link
-                  key={item.label}
-                  href={item.to}
-                  className={[
-                    'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition',
-                    active
-                      ? 'bg-violet-50 text-violet-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-                  ].join(' ')}
-                >
-                  <span className="h-2 w-2 rounded-full bg-current" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Signed in</div>
-            <div className="mt-2 text-sm font-semibold text-slate-900">{profile.name}</div>
-            <div className="text-xs text-slate-500">{profile.email}</div>
-          </div>
-
-          <button
-            onClick={logout}
-            className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Logout
+          <button className="logout" onClick={logout}>
+            <Icon name="logout" />
+            <span>Sign out</span>
           </button>
-        </aside>
-
-        <div className="flex min-h-screen flex-1 flex-col">
-          <header className="border-b border-slate-200 bg-white px-5 py-4 sm:px-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
-                  {profile.is_admin ? 'Admin view' : 'User dashboard'}
-                </div>
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{props.title}</h1>
-                {props.subtitle ? <p className="mt-1 text-sm text-slate-500">{props.subtitle}</p> : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">{props.actions}</div>
-            </div>
-          </header>
-
-          <main className="flex-1 px-5 py-6 sm:px-8">{props.children}</main>
         </div>
+      </aside>
+      <div className="workspace-body">
+        <div className="workspace-topbar">
+          <span>
+            Workspace <span className="breadcrumb-slash">/</span>{' '}
+            {pathname.startsWith('/admin')
+              ? 'People'
+              : pathname === '/'
+                ? 'My quizzes'
+                : props.title}
+          </span>
+          <span className="topbar-account">{profile.email}</span>
+        </div>
+        <main id="main-content" className="workspace-content">
+          <header className="page-heading">
+            <div>
+              <h1>{props.title}</h1>
+              {props.subtitle && <p>{props.subtitle}</p>}
+            </div>
+            <div className="page-actions">{props.actions}</div>
+          </header>
+          {props.children}
+          <footer className="workspace-footer">
+            <span>Quiz App</span>
+            <span>One question at a time.</span>
+          </footer>
+        </main>
       </div>
     </div>
   )
@@ -112,46 +185,40 @@ export function Surface(props: {
   className?: string
 }) {
   return (
-    <section className={['rounded-3xl border border-slate-200 bg-white p-5 shadow-sm', props.className ?? ''].join(' ')}>
-      {props.title ? (
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-900">{props.title}</h2>
-          {props.subtitle ? <p className="mt-1 text-sm text-slate-500">{props.subtitle}</p> : null}
+    <section className={`surface ${props.className ?? ''}`}>
+      {props.title && (
+        <div className="surface-heading">
+          <h2>{props.title}</h2>
+          {props.subtitle && <p>{props.subtitle}</p>}
         </div>
-      ) : null}
+      )}
       {props.children}
     </section>
   )
 }
 
-export function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
-  const { label, className, ...rest } = props
+export function Field({
+  label,
+  className,
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      {label ? <span className="text-sm font-medium text-slate-700">{label}</span> : null}
-      <input
-        {...rest}
-        className={[
-          'rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500',
-          className ?? '',
-        ].join(' ')}
-      />
+    <label className="form-field">
+      {label && <span>{label}</span>}
+      <input {...rest} className={`form-input ${className ?? ''}`} />
     </label>
   )
 }
 
-export function Area(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }) {
-  const { label, className, ...rest } = props
+export function Area({
+  label,
+  className,
+  ...rest
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      {label ? <span className="text-sm font-medium text-slate-700">{label}</span> : null}
-      <textarea
-        {...rest}
-        className={[
-          'rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500',
-          className ?? '',
-        ].join(' ')}
-      />
+    <label className="form-field">
+      {label && <span>{label}</span>}
+      <textarea {...rest} className={`form-input ${className ?? ''}`} />
     </label>
   )
 }

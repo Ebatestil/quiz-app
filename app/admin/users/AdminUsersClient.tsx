@@ -5,7 +5,10 @@ import type { FormEvent } from 'react'
 import { AppShell, Field, Surface } from '@/components/AppShell'
 import type { Profile } from '@/lib/types'
 
-export function AdminUsersClient(props: { profile: Profile; initialUsers: Profile[] }) {
+export function AdminUsersClient(props: {
+  profile: Profile
+  initialUsers: Profile[]
+}) {
   const { profile } = props
   const [users, setUsers] = useState<Profile[]>(props.initialUsers)
   const [loading, setLoading] = useState(false)
@@ -30,7 +33,12 @@ export function AdminUsersClient(props: { profile: Profile; initialUsers: Profil
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), email: email.trim(), password, is_admin: isAdmin }),
+      body: JSON.stringify({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        is_admin: isAdmin,
+      }),
     })
     const json = await res.json()
     if (!res.ok) {
@@ -56,25 +64,33 @@ export function AdminUsersClient(props: { profile: Profile; initialUsers: Profil
 
   return (
     <AppShell
-      title="User Management"
-      subtitle="Create, enable, and disable user accounts."
+      title="People"
+      subtitle="Manage the people in your teaching workspace."
       profile={profile}
       actions={
-        <button
-          onClick={load}
-          className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-500"
-        >
+        <button onClick={load} className="btn btn-primary ">
           Refresh
         </button>
       }
     >
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.6fr]">
-        <Surface title="Add / Edit User">
+        <Surface
+          title="Add a member"
+          subtitle="Create an account for a teacher or administrator."
+        >
           {error ? (
-            <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>
+            <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+              {error}
+            </div>
           ) : null}
           <form onSubmit={create} className="space-y-3">
-            <Field placeholder="Name" label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Field
+              placeholder="Name"
+              label="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
             <Field
               placeholder="Email"
               label="Email"
@@ -91,21 +107,28 @@ export function AdminUsersClient(props: { profile: Profile; initialUsers: Profil
               type="text"
               required
             />
-            <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span className="text-sm font-medium text-slate-700">Admin role</span>
-              <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
+            <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+              <span className="text-sm font-medium text-slate-700">
+                Admin role
+              </span>
+              <input
+                type="checkbox"
+                checked={isAdmin}
+                onChange={(e) => setIsAdmin(e.target.checked)}
+              />
             </label>
-            <button className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-600">
-              Save User
-            </button>
+            <button className="btn btn-primary w-full">Create account</button>
           </form>
         </Surface>
 
-        <Surface title="Users">
+        <Surface
+          title="Workspace members"
+          subtitle={`${users.length} accounts in your workspace`}
+        >
           {loading ? (
             <div className="text-sm text-slate-500">Loading...</div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto rounded-md border border-slate-200">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
@@ -119,7 +142,9 @@ export function AdminUsersClient(props: { profile: Profile; initialUsers: Profil
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {users.map((u) => (
                     <tr key={u.id}>
-                      <td className="px-4 py-3 font-medium text-slate-900">{u.name}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {u.name}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{u.email}</td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -139,16 +164,13 @@ export function AdminUsersClient(props: { profile: Profile; initialUsers: Profil
                       </td>
                       <td className="px-4 py-3">
                         {u.disabled_at ? (
-                          <button
-                            onClick={() => enable(u.id)}
-                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
+                          <button onClick={() => enable(u.id)} className="btn ">
                             Enable
                           </button>
                         ) : (
                           <button
                             onClick={() => disable(u.id)}
-                            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                            className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                           >
                             Disable
                           </button>
