@@ -19,13 +19,19 @@ export function ResultsClient(props: {
   quizId: number
   isOwner: boolean
   initialRows: AttemptRow[]
+  initialTotal: number
+  initialCompleted: number
 }) {
   const { profile, quizId, isOwner } = props
   const [rows, setRows] = useState<AttemptRow[]>(props.initialRows)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(props.initialTotal)
+  const [completed, setCompleted] = useState(props.initialCompleted)
+  const pageCount = Math.max(1, Math.ceil(total / 15))
   const [loading, setLoading] = useState(false)
   const feedback = useFeedback()
 
-  async function load() {
+  async function load(requestedPage = page) {
     setLoading(true)
     await feedback(async () => {
       const supabase = createClient()
@@ -33,6 +39,7 @@ export function ResultsClient(props: {
         .from('attempts')
         .select(
           'id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason',
+          { count: 'exact' },
         )
         .eq('quiz_id', quizId)
         .order('id', { ascending: false })
@@ -41,9 +48,26 @@ export function ResultsClient(props: {
         query = query.eq('user_id', profile.id)
       }
 
-      const { data, error } = await query
-      if (error) throw error
-      setRows((data ?? []) as AttemptRow[])
+      let completedQuery = supabase.from('attempts').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId).not('completed_at', 'is', null)
+      if (!isOwner) completedQuery = completedQuery.eq('user_id', profile.id)
+      const [result, completedResult] = await Promise.all([
+        query.range((requestedPage - 1) * 15, requestedPage * 15 - 1),
+        completedQuery,
+      ])
+      if (result.error) throw result.error
+      if (completedResult.error) throw completedResult.error
+      const nextTotal = result.count ?? 0
+      const nextPage = Math.min(requestedPage, Math.max(1, Math.ceil(nextTotal / 15)))
+      let nextRows = result.data
+      if (nextPage !== requestedPage) {
+        const corrected = await query.range((nextPage - 1) * 15, nextPage * 15 - 1)
+        if (corrected.error) throw corrected.error
+        nextRows = corrected.data
+      }
+      setRows((nextRows ?? []) as AttemptRow[])
+      setTotal(nextTotal)
+      setCompleted(completedResult.count ?? 0)
+      setPage(nextPage)
     }, 'Results refreshed.')
     setLoading(false)
   }
@@ -59,7 +83,7 @@ export function ResultsClient(props: {
       profile={profile}
       actions={
         <>
-          <button onClick={load} disabled={loading} className="btn ">
+          <button onClick={() => load()} disabled={loading} className="btn ">
             Refresh
           </button>
           <Link href={`/quizzes/${quizId}/take`} className="btn btn-primary ">
@@ -72,15 +96,15 @@ export function ResultsClient(props: {
         <div className="stats-strip" aria-label="Submission overview">
           <div className="stat">
             <span>Total attempts</span>
-            <strong>{rows.length}</strong>
+            <strong>{total}</strong>
           </div>
           <div className="stat">
             <span>Completed</span>
-            <strong>{rows.filter((row) => row.completed_at).length}</strong>
+            <strong>{completed}</strong>
           </div>
           <div className="stat">
             <span>In progress</span>
-            <strong>{rows.filter((row) => !row.completed_at).length}</strong>
+            <strong>{total - completed}</strong>
           </div>
         </div>
         <Surface
@@ -177,6 +201,18 @@ export function ResultsClient(props: {
                 </tbody>
               </table>
             </div>
+          )}
+          {total > 0 && (
+            <nav aria-label="Submission history pages" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500" aria-live="polite">
+                Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} of {total} submissions
+              </p>
+              <div className="flex items-center gap-3">
+                <button className="btn" disabled={loading || page === 1} onClick={() => load(page - 1)}>Previous</button>
+                <span className="text-sm text-slate-600">Page {page} of {pageCount}</span>
+                <button className="btn" disabled={loading || page >= pageCount} onClick={() => load(page + 1)}>Next</button>
+              </div>
+            </nav>
           )}
         </Surface>
       </div>
