@@ -6,6 +6,7 @@ import type { FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   exitFullscreen,
+  fullscreenAvailability,
   isFullscreen,
   requestFullscreen,
 } from '@/lib/fullscreen'
@@ -45,6 +46,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     quiz ? null : 'This exam link is invalid.',
   )
   const [fullscreenError, setFullscreenError] = useState<string | null>(null)
+  const [fullscreenEnforced, setFullscreenEnforced] = useState(false)
 
   const [attempt, setAttempt] = useState<AttemptPayload | null>(null)
   const [idx, setIdx] = useState(0)
@@ -105,7 +107,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       finishWithViolation('blur')
     }
     function onFullscreenChange() {
-      if (!isFullscreen()) finishWithViolation('fullscreen_exit')
+      if (fullscreenEnforced && !isFullscreen()) finishWithViolation('fullscreen_exit')
     }
     function onKeyDown(e: KeyboardEvent) {
       const blocked =
@@ -147,7 +149,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       document.removeEventListener('cut', onCopyCutPaste)
       document.removeEventListener('paste', onCopyCutPaste)
     }
-  }, [lockdownOn, phase, finishWithViolation])
+  }, [lockdownOn, phase, finishWithViolation, fullscreenEnforced])
 
   // Warn on refresh/close while an exam is in progress (best-effort only).
   useEffect(() => {
@@ -163,18 +165,31 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   async function startExam(e: FormEvent) {
     e.preventDefault()
     if (!quiz || !name.trim() || startingRef.current) return
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
+    const withoutFullscreen = submitter?.value === 'windowed' && !!fullscreenError
     startingRef.current = true
     try {
       setError(null)
       setFullscreenError(null)
       setPhase('starting')
+      setFullscreenEnforced(false)
 
-      if (lockdownOn) {
+      if (lockdownOn && !withoutFullscreen) {
+        const availability = fullscreenAvailability()
+        if (availability !== 'available') {
+          setFullscreenError(availability === 'unsupported'
+            ? 'This browser does not support fullscreen for exams. You can start without fullscreen below. Keep this tab open and stay in the browser. Your attempt has not started.'
+            : 'Fullscreen is unavailable in this browser window. Open the link directly in your browser and retry, or start without fullscreen below. Your attempt has not started.')
+          setPhase('landing')
+          return
+        }
         try {
           await requestFullscreen()
+          if (!isFullscreen()) throw new Error('Fullscreen did not open')
+          setFullscreenEnforced(true)
         } catch {
           setFullscreenError(
-            'Your browser blocked fullscreen. Please allow it and try again — fullscreen is required for this exam.',
+            'Fullscreen did not open. Tap Start Exam to request it again, and allow it if your browser asks. You can also start without fullscreen below. Your attempt has not started.',
           )
           setPhase('landing')
           return
@@ -381,10 +396,10 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
         {lockdownOn ? (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-            This exam is locked down: it will open in fullscreen, and switching
-            tabs, switching apps, or exiting fullscreen will submit your exam
-            immediately. Close other apps and make sure you have time to finish
-            before starting.
+            This exam monitors tab and app switching, which will submit your exam
+            immediately. We’ll request fullscreen when you start. If your browser
+            cannot open it, you can continue without fullscreen. If fullscreen
+            opens, exiting it will also submit your exam. Close other apps before starting.
           </div>
         ) : null}
 
@@ -435,6 +450,11 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                 ? 'Start Exam (Fullscreen)'
                 : 'Start Exam'}
           </button>
+          {lockdownOn && fullscreenError && (
+            <button type="submit" value="windowed" disabled={phase === 'starting'} className="btn btn-secondary w-full disabled:opacity-60">
+              Start without fullscreen
+            </button>
+          )}
         </form>
       </Shell>
     )
@@ -453,7 +473,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     <div className="exam-shell">
       <div className="exam-brandbar">
         <Brand />
-        <span>{lockdownOn ? 'Fullscreen exam' : 'Student exam'}</span>
+        <span>{lockdownOn ? (fullscreenEnforced ? 'Fullscreen exam' : 'Monitored exam') : 'Student exam'}</span>
       </div>
       <main className="exam-taking">
         <header className="exam-taking-heading">

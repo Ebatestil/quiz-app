@@ -26,9 +26,11 @@ Same features as before, plus a new one:
    way, right after. This adds the exam-link / lockdown feature (see below).
    Then run [`supabase/003_prevent_duplicate_exam_attempts.sql`](./supabase/003_prevent_duplicate_exam_attempts.sql)
    to enforce one shared-exam attempt per student name per quiz.
-   Finally run [`supabase/004_question_types_and_quiz_attempts.sql`](./supabase/004_question_types_and_quiz_attempts.sql)
+   Then run [`supabase/004_question_types_and_quiz_attempts.sql`](./supabase/004_question_types_and_quiz_attempts.sql)
    for true/false and enumeration grading and the updated per-quiz attempt checks.
-   Apply this migration before deploying the updated app. Vercel does not run SQL migrations.
+   Finally run [`supabase/005_student_workspace_access.sql`](./supabase/005_student_workspace_access.sql)
+   to restrict anonymous exam sessions to student access and protect workspace operations.
+   Apply these migrations before deploying the updated app. Vercel does not run SQL migrations.
 4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
    Students use this to take an exam without creating an account.
 5. Go to **Project Settings → API**. You'll need three values from this page:
@@ -114,7 +116,8 @@ Any quiz can now be turned into a shareable exam:
 **What "lockdown" actually does:** a browser can't truly *prevent* someone
 from alt-tabbing or opening another app — no website has that power. What it
 *can* do, and what this app does, is:
-- Require the exam to be taken in fullscreen
+- Request fullscreen when the student starts; if unavailable or rejected, offer
+  “Start without fullscreen” while keeping tab/app-switch monitoring active
 - Detect the moment the student switches tabs, switches apps, minimizes the
   window, or exits fullscreen (all of these fire detectable browser events on
   both desktop and mobile)
@@ -140,9 +143,10 @@ devices, which is outside what a web app can do.
 - `blur` events (used to detect app-switching) can occasionally fire from
   innocuous things like clicking a browser extension icon — treat a single
   flagged attempt as "worth a look," not automatic proof of cheating.
-- iOS Safari's fullscreen support varies by version; it works well on modern
-  versions (16.4+) and on Android Chrome. Older iOS Safari has limited
-  fullscreen support for web pages.
+- Fullscreen support varies by device and browser. The app detects support.
+  A failed request does not start an attempt. Students can continue without
+  fullscreen; tab/app-switch monitoring stays active. Fullscreen exit is
+  monitored only for exams that entered fullscreen.
 
 
 ## How it's structured

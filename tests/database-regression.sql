@@ -16,6 +16,10 @@ $$;
 -- Applying the upgrade twice should be safe.
 \ir ../supabase/004_question_types_and_quiz_attempts.sql
 
+\ir ../supabase/005_student_workspace_access.sql
+\ir ../supabase/005_student_workspace_access.sql
+\ir student-workspace-access.sql
+
 set plpgsql.check_asserts = on;
 begin;
 do $$

@@ -12,6 +12,7 @@ function LoginForm() {
   const notify = useNotify()
   const searchParams = useSearchParams()
   const wasDisabled = searchParams.get('disabled') === '1'
+  const isStudentSession = searchParams.get('student') === '1'
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -47,14 +48,15 @@ function LoginForm() {
         // Mirrors the Laravel disabled-account check.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('disabled_at')
+          .select('disabled_at, is_anonymous')
           .eq('id', data.user.id)
           .single()
 
-        if (profile?.disabled_at) {
+        if (!profile || profile.is_anonymous || data.user.is_anonymous || profile.disabled_at) {
           await supabase.auth.signOut()
-          setError('Account disabled')
-          notify('Account disabled.', 'error')
+          const message = profile?.disabled_at ? 'Account disabled.' : 'A workspace account is required.'
+          setError(message)
+          notify(message, 'error')
           return
         }
 
@@ -118,6 +120,7 @@ function LoginForm() {
             <Brand />
           </div>
           <h1>{title}</h1>
+          {isStudentSession && <p role="status" className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">You’re signed in for a student exam. The workspace requires a separate teacher account. To take another exam, open its link from your teacher.</p>}
           <p>
             {mode === 'login'
               ? 'Sign in to your teaching workspace.'

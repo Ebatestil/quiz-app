@@ -13,13 +13,13 @@ export async function requireProfile(): Promise<Profile> {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
+  if (!user || user.is_anonymous) {
     redirect('/login')
   }
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
-  if (!profile) {
+  if (!profile || profile.is_anonymous || profile.disabled_at) {
     redirect('/login')
   }
 

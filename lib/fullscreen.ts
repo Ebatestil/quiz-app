@@ -1,6 +1,16 @@
 type FullscreenDoc = Document & {
+  webkitFullscreenEnabled?: boolean
   webkitFullscreenElement?: Element | null
   webkitExitFullscreen?: () => Promise<void>
+}
+
+export function fullscreenAvailability(): 'available' | 'unsupported' | 'blocked' {
+  const target = document.documentElement as FullscreenEl
+  const doc = document as FullscreenDoc
+  const standard = typeof target.requestFullscreen === 'function'
+  if (!standard && typeof target.webkitRequestFullscreen !== 'function') return 'unsupported'
+  const enabled = standard ? doc.fullscreenEnabled : doc.webkitFullscreenEnabled
+  return enabled === false ? 'blocked' : 'available'
 }
 type FullscreenEl = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void>

@@ -30,40 +30,56 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))
 
-  if (!user && !isPublic) {
+  function redirectTo(pathname: string, reason?: string) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+    url.pathname = pathname
+    url.search = ''
+    if (reason) url.searchParams.set(reason, '1')
+    const redirect = NextResponse.redirect(url)
+    response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie))
+    return redirect
   }
 
-  if (user && !isPublic) {
+  // An exam session is authenticated with Supabase, but is not a teacher account.
+  // Keep it alive for exams without granting access to the workspace or APIs.
+  if (user?.is_anonymous) {
+    if (isPublic) return response
+    if (path.startsWith('/api/')) {
+      return NextResponse.json({ message: 'A workspace account is required.' }, { status: 403 })
+    }
+    return redirectTo('/login', 'student')
+  }
+
+  if (!user && !isPublic) {
+    return redirectTo('/login')
+  }
+
+  if (user && (!isPublic || path === '/login')) {
     // Mirrors the Laravel "notDisabled" middleware: a disabled account is
     // signed out and bounced to login with an explanatory message.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('disabled_at, is_admin')
+      .select('disabled_at, is_admin, is_anonymous')
       .eq('id', user.id)
       .single()
 
-    if (profile?.disabled_at) {
+    if (!profile || profile.is_anonymous) {
+      if (path === '/login') return response
+      return redirectTo('/login', 'student')
+    }
+
+    if (profile.disabled_at) {
       await supabase.auth.signOut()
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      url.searchParams.set('disabled', '1')
-      return NextResponse.redirect(url)
+      return redirectTo('/login', 'disabled')
     }
 
     if (path.startsWith('/admin') && !profile?.is_admin) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/'
-      return NextResponse.redirect(url)
+      return redirectTo('/')
     }
   }
 
   if (user && path === '/login') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
+    return redirectTo('/')
   }
 
   return response

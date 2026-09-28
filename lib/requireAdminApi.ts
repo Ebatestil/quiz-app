@@ -11,9 +11,13 @@ export async function requireAdminApi() {
     return { error: NextResponse.json({ message: 'Unauthenticated' }, { status: 401 }) }
   }
 
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+  if (user.is_anonymous) {
+    return { error: NextResponse.json({ message: 'A workspace account is required.' }, { status: 403 }) }
+  }
 
-  if (!profile?.is_admin) {
+  const { data: profile } = await supabase.from('profiles').select('is_admin, is_anonymous, disabled_at').eq('id', user.id).single()
+
+  if (!profile?.is_admin || profile.is_anonymous || profile.disabled_at) {
     return { error: NextResponse.json({ message: 'Forbidden' }, { status: 403 }) }
   }
 
