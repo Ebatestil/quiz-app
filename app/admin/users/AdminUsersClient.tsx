@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AppShell, Field, Surface } from '@/components/AppShell'
+import { useFeedback } from '@/components/Notifications'
 import type { Profile } from '@/lib/types'
 
 export function AdminUsersClient(props: {
@@ -12,54 +13,77 @@ export function AdminUsersClient(props: {
   const { profile } = props
   const [users, setUsers] = useState<Profile[]>(props.initialUsers)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const feedback = useFeedback()
+  const pending = useRef(false)
+  const [busy, setBusy] = useState(false)
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('password')
   const [isAdmin, setIsAdmin] = useState(false)
 
+  async function request(url: string, options?: RequestInit) {
+    const res = await fetch(url, options)
+    const json = await res.json()
+    if (!res.ok)
+      throw new Error(json.message ?? 'Request failed. Please try again.')
+    return json
+  }
+  async function fetchUsers() {
+    const json = await request('/api/admin/users')
+    setUsers(json.data ?? [])
+  }
   async function load() {
     setLoading(true)
-    const res = await fetch('/api/admin/users')
-    const json = await res.json()
-    setUsers(json.data ?? [])
+    await feedback(fetchUsers, 'User list refreshed.')
     setLoading(false)
   }
-
+  async function mutate(operation: () => Promise<void>, success: string) {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    try {
+      await feedback(operation, success)
+    } finally {
+      pending.current = false
+      setBusy(false)
+    }
+  }
   async function create(e: FormEvent) {
     e.preventDefault()
-    setError(null)
-    const res = await fetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: name.trim(),
-        email: email.trim(),
-        password,
-        is_admin: isAdmin,
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok) {
-      setError(json.message ?? 'Request failed')
-      return
-    }
-    setName('')
-    setEmail('')
-    setPassword('password')
-    setIsAdmin(false)
-    await load()
+    await mutate(async () => {
+      await request('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          is_admin: isAdmin,
+        }),
+      })
+      setName('')
+      setEmail('')
+      setPassword('password')
+      setIsAdmin(false)
+      await fetchUsers()
+    }, 'User account created.')
   }
-
   async function disable(userId: string) {
-    await fetch(`/api/admin/users/${userId}/disable`, { method: 'POST' })
-    await load()
+    await mutate(async () => {
+      await request('/api/admin/users/' + userId + '/disable', {
+        method: 'POST',
+      })
+      await fetchUsers()
+    }, 'User account disabled.')
   }
-
   async function enable(userId: string) {
-    await fetch(`/api/admin/users/${userId}/enable`, { method: 'POST' })
-    await load()
+    await mutate(async () => {
+      await request('/api/admin/users/' + userId + '/enable', {
+        method: 'POST',
+      })
+      await fetchUsers()
+    }, 'User account enabled.')
   }
 
   return (
@@ -68,7 +92,11 @@ export function AdminUsersClient(props: {
       subtitle="Manage the people in your teaching workspace."
       profile={profile}
       actions={
-        <button onClick={load} className="btn btn-primary ">
+        <button
+          onClick={load}
+          disabled={loading || busy}
+          className="btn btn-primary "
+        >
           Refresh
         </button>
       }
@@ -78,46 +106,43 @@ export function AdminUsersClient(props: {
           title="Add a member"
           subtitle="Create an account for a teacher or administrator."
         >
-          {error ? (
-            <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          ) : null}
-          <form onSubmit={create} className="space-y-3">
-            <Field
-              placeholder="Name"
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <Field
-              placeholder="Email"
-              label="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              required
-            />
-            <Field
-              placeholder="Password"
-              label="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="text"
-              required
-            />
-            <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-              <span className="text-sm font-medium text-slate-700">
-                Admin role
-              </span>
-              <input
-                type="checkbox"
-                checked={isAdmin}
-                onChange={(e) => setIsAdmin(e.target.checked)}
+          <form onSubmit={create}>
+            <fieldset disabled={busy} className="space-y-3">
+              <Field
+                placeholder="Name"
+                label="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
               />
-            </label>
-            <button className="btn btn-primary w-full">Create account</button>
+              <Field
+                placeholder="Email"
+                label="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                required
+              />
+              <Field
+                placeholder="Password"
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="text"
+                required
+              />
+              <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                <span className="text-sm font-medium text-slate-700">
+                  Admin role
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isAdmin}
+                  onChange={(e) => setIsAdmin(e.target.checked)}
+                />
+              </label>
+              <button className="btn btn-primary w-full">Create account</button>
+            </fieldset>
           </form>
         </Surface>
 
@@ -164,12 +189,17 @@ export function AdminUsersClient(props: {
                       </td>
                       <td className="px-4 py-3">
                         {u.disabled_at ? (
-                          <button onClick={() => enable(u.id)} className="btn ">
+                          <button
+                            onClick={() => enable(u.id)}
+                            disabled={busy}
+                            className="btn "
+                          >
                             Enable
                           </button>
                         ) : (
                           <button
                             onClick={() => disable(u.id)}
+                            disabled={busy}
                             className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                           >
                             Disable

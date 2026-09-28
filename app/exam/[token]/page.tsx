@@ -1,7 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { ExamClient } from './ExamClient'
 
-export default async function ExamPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function ExamPage({
+  params,
+}: {
+  params: Promise<{ token: string }>
+}) {
   const { token } = await params
   const supabase = await createClient()
 
@@ -11,5 +15,5 @@ export default async function ExamPage({ params }: { params: Promise<{ token: st
     .eq('share_token', token)
     .single()
 
-  return <ExamClient token={token} quiz={quiz} />
+  return <ExamClient key={token} token={token} quiz={quiz} />
 }

@@ -1,19 +1,22 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next'
+import './globals.css'
+import { NotificationProvider } from '@/components/Notifications'
 
 export const metadata: Metadata = {
-  title: "Quiz App",
-  description: "Create quizzes, take them, and track your scores.",
-};
+  title: 'Quiz App',
+  description: 'Create quizzes, take them, and track your scores.',
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <NotificationProvider>{children}</NotificationProvider>
+      </body>
     </html>
-  );
+  )
 }

@@ -1,15 +1,18 @@
 'use client'
+import { isChoiceQuestion, answerInstructions } from '@/lib/questions'
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Surface } from '@/components/AppShell'
+import { useFeedback } from '@/components/Notifications'
 import type { AttemptPayload, Profile } from '@/lib/types'
 
 export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
   const { profile, quizId } = props
   const router = useRouter()
+  const feedback = useFeedback()
 
   const [attempt, setAttempt] = useState<AttemptPayload | null>(null)
   const [idx, setIdx] = useState(0)
@@ -55,49 +58,52 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
   }, [q?.id, q?.answer_text])
 
   async function refresh(attemptId: number) {
-    const supabase = createClient()
-    const { data } = await supabase.rpc('get_attempt', {
+    const { data, error } = await createClient().rpc('get_attempt', {
       p_attempt_id: attemptId,
     })
+    if (error) throw error
     setAttempt(data as AttemptPayload)
   }
-
-  async function answer(selectedIndex: number) {
-    if (!attempt || isCompleted || !q) return
-    setSubmitting(true)
-    const supabase = createClient()
-    await supabase.rpc('submit_answer', {
+  async function saveAnswer(selectedIndex: number | null, text: string | null) {
+    if (!attempt || !q) return
+    const { error } = await createClient().rpc('submit_answer', {
       p_attempt_id: attempt.id,
       p_question_id: q.id,
       p_selected_index: selectedIndex,
-      p_answer_text: null,
+      p_answer_text: text,
     })
-    await refresh(attempt.id)
+    if (error) throw error
+  }
+  async function answer(selectedIndex: number) {
+    if (!attempt || isCompleted || !q || submitting) return
+    setSubmitting(true)
+    await feedback(async () => {
+      await saveAnswer(selectedIndex, null)
+      await refresh(attempt.id)
+    }, 'Answer saved.')
     setSubmitting(false)
   }
-
   async function submitTextAnswer() {
-    if (!attempt || !q || isCompleted) return
+    if (!attempt || !q || isCompleted || submitting) return
     setSubmitting(true)
-    const supabase = createClient()
-    await supabase.rpc('submit_answer', {
-      p_attempt_id: attempt.id,
-      p_question_id: q.id,
-      p_selected_index: null,
-      p_answer_text: textAnswer,
-    })
-    await refresh(attempt.id)
+    await feedback(async () => {
+      await saveAnswer(null, textAnswer)
+      await refresh(attempt.id)
+    }, 'Answer saved.')
     setSubmitting(false)
   }
-
   async function complete() {
-    if (!attempt || isCompleted) return
+    if (!attempt || isCompleted || submitting) return
     setSubmitting(true)
-    const supabase = createClient()
-    const { data } = await supabase.rpc('complete_attempt', {
-      p_attempt_id: attempt.id,
-    })
-    setAttempt(data as AttemptPayload)
+    await feedback(async () => {
+      if (q && !isChoiceQuestion(q.type) && textAnswer.trim())
+        await saveAnswer(null, textAnswer)
+      const { data, error } = await createClient().rpc('complete_attempt', {
+        p_attempt_id: attempt.id,
+      })
+      if (error) throw error
+      setAttempt(data as AttemptPayload)
+    }, 'Quiz submitted successfully.')
     setSubmitting(false)
   }
 
@@ -204,7 +210,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
               {q?.prompt}
             </div>
 
-            {q?.type === 'multiple_choice' ? (
+            {q && isChoiceQuestion(q.type) ? (
               <div className="mt-6 space-y-3">
                 {(q.options ?? []).map((opt, optIdx) => {
                   const selected = q.selected_index === optIdx
@@ -241,11 +247,23 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
               </div>
             ) : (
               <div className="mt-6 space-y-3">
+                <p className="text-xs text-slate-500">
+                  {answerInstructions(q?.type ?? 'identification')}
+                </p>
                 <textarea
                   value={textAnswer}
                   onChange={(e) => setTextAnswer(e.target.value)}
                   disabled={submitting || isCompleted}
-                  placeholder="Type your answer here"
+                  aria-label={
+                    q?.type === 'enumeration'
+                      ? 'Enumeration answers'
+                      : 'Your answer'
+                  }
+                  placeholder={
+                    q?.type === 'enumeration'
+                      ? 'First answer\nSecond answer\nThird answer'
+                      : 'Type your answer here'
+                  }
                   className="min-h-32 w-full rounded-md border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 disabled:opacity-60"
                 />
                 {!isCompleted ? (
@@ -283,7 +301,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
               <button
                 className="btn disabled:opacity-50"
                 onClick={() => setIdx((i) => Math.max(0, i - 1))}
-                disabled={idx === 0}
+                disabled={submitting || idx === 0}
               >
                 Previous
               </button>
@@ -302,7 +320,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                   onClick={() =>
                     setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))
                   }
-                  disabled={idx === attempt.questions.length - 1}
+                  disabled={submitting || idx === attempt.questions.length - 1}
                 >
                   Next
                 </button>

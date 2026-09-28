@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Area, Field, Surface, Icon } from '@/components/AppShell'
+import { useFeedback } from '@/components/Notifications'
 import type { Profile, Quiz } from '@/lib/types'
 
 export function DashboardClient(props: {
@@ -20,54 +21,51 @@ export function DashboardClient(props: {
   const [showCreate, setShowCreate] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const feedback = useFeedback()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'published' | 'draft'>('all')
 
-  async function load() {
-    setLoading(true)
-    setError(null)
-    const { data, error: loadError } = await createClient()
+  async function fetchQuizzes() {
+    const { data, error } = await createClient()
       .from('quizzes')
       .select('*, questions(count)')
       .eq('user_id', profile.id)
       .order('id', { ascending: false })
-    if (loadError) setError(loadError.message)
-    else
-      setQuizzes(
-        (data ?? []).map((q: Quiz & { questions?: { count: number }[] }) => ({
-          ...q,
-          questions_count: q.questions?.[0]?.count ?? 0,
-        })),
-      )
+    if (error) throw error
+    setQuizzes(
+      (data ?? []).map((q: Quiz & { questions?: { count: number }[] }) => ({
+        ...q,
+        questions_count: q.questions?.[0]?.count ?? 0,
+      })),
+    )
+  }
+  async function load() {
+    setLoading(true)
+    await feedback(fetchQuizzes, 'Quiz list refreshed.')
     setLoading(false)
   }
-
   async function createQuiz(e: FormEvent) {
     e.preventDefault()
     if (!title.trim() || creating) return
     setCreating(true)
-    setError(null)
-    const { error: createError } = await createClient()
-      .from('quizzes')
-      .insert({
-        user_id: profile.id,
-        title: title.trim(),
-        description: description.trim() || null,
-      })
-    if (createError) {
-      setError(createError.message)
-      setCreating(false)
-      return
-    }
-    setTitle('')
-    setDescription('')
-    setShowCreate(false)
-    setSearch('')
-    setFilter('all')
-    await load()
+    await feedback(async () => {
+      const { error } = await createClient()
+        .from('quizzes')
+        .insert({
+          user_id: profile.id,
+          title: title.trim(),
+          description: description.trim() || null,
+        })
+      if (error) throw error
+      setTitle('')
+      setDescription('')
+      setShowCreate(false)
+      setSearch('')
+      setFilter('all')
+      await fetchQuizzes()
+      router.refresh()
+    }, 'Quiz created. You can now add questions.')
     setCreating(false)
-    router.refresh()
   }
 
   const publishedCount = quizzes.filter((q) => q.is_published).length
@@ -120,14 +118,6 @@ export function DashboardClient(props: {
           <strong>{totalQuestions.toString().padStart(2, '0')}</strong>
         </div>
       </div>
-      {error && (
-        <div
-          role="alert"
-          className="mb-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-        >
-          {error}
-        </div>
-      )}
       {showCreate && (
         <div id="create-quiz" className="create-panel">
           <Surface

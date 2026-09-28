@@ -5,7 +5,7 @@ and **Supabase** (Postgres database + Auth), so it can be hosted for free.
 
 Same features as before, plus a new one:
 - Register / login
-- Create quizzes with multiple-choice or identification questions
+- Create quizzes with multiple-choice, identification, true/false, or enumeration questions
 - Publish/unpublish quizzes
 - Take a quiz (questions shuffled), score tracked per attempt
 - Review past attempts
@@ -26,6 +26,9 @@ Same features as before, plus a new one:
    way, right after. This adds the exam-link / lockdown feature (see below).
    Then run [`supabase/003_prevent_duplicate_exam_attempts.sql`](./supabase/003_prevent_duplicate_exam_attempts.sql)
    to enforce one shared-exam attempt per student name per quiz.
+   Finally run [`supabase/004_question_types_and_quiz_attempts.sql`](./supabase/004_question_types_and_quiz_attempts.sql)
+   for true/false and enumeration grading and the updated per-quiz attempt checks.
+   Apply this migration before deploying the updated app. Vercel does not run SQL migrations.
 4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
    Students use this to take an exam without creating an account.
 5. Go to **Project Settings → API**. You'll need three values from this page:
@@ -82,6 +85,19 @@ Supabase's free tier covers the database + auth side at no cost for small
 projects.
 
 ## Exam Mode (for teachers)
+
+Enumeration answers use one item per line. Students earn one point for the
+question only when the complete list matches, in any order. Case, blank lines,
+and extra whitespace are ignored; missing, extra, or incorrectly repeated items
+are marked incorrect. True/false questions also count as one point.
+
+The same name can take different quizzes. A repeat is blocked only when both
+the quiz and normalized full name match a previous attempt. Unfinished attempts
+still count. Each quiz has its own exam link; use that quiz's saved link.
+
+Save, create, delete, copy, answer, submission, and account-management actions
+show success or error notifications. Failed saves retain entered content, and
+the exam-link panel reflects saved publish/lockdown settings.
 
 Any quiz can now be turned into a shareable exam:
 

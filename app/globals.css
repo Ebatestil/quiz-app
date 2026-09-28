@@ -954,3 +954,44 @@ tbody tr:hover {
     scroll-behavior: auto !important;
   }
 }
+
+.notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #b8cfbc;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #20332418;
+  color: #244f38;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.notification > div {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.notification > span {
+  font-weight: 700;
+}
+.notification button {
+  padding: 0 4px;
+  font-size: 20px;
+  line-height: 1;
+}
+.notification-error {
+  border-color: #e5b5b5;
+  color: #a22929;
+}
+@media (max-width: 700px) {
+  .notification {
+    bottom: 16px;
+    right: 16px;
+  }
+}

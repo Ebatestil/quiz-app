@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Surface } from '@/components/AppShell'
 import type { AttemptRow, Profile } from '@/lib/types'
+import { useFeedback } from '@/components/Notifications'
 
 const TERMINATION_LABELS: Record<string, string> = {
   tab_switch: 'Tab/app switch',
@@ -22,24 +23,28 @@ export function ResultsClient(props: {
   const { profile, quizId, isOwner } = props
   const [rows, setRows] = useState<AttemptRow[]>(props.initialRows)
   const [loading, setLoading] = useState(false)
+  const feedback = useFeedback()
 
   async function load() {
     setLoading(true)
-    const supabase = createClient()
-    let query = supabase
-      .from('attempts')
-      .select(
-        'id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason',
-      )
-      .eq('quiz_id', quizId)
-      .order('id', { ascending: false })
+    await feedback(async () => {
+      const supabase = createClient()
+      let query = supabase
+        .from('attempts')
+        .select(
+          'id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason',
+        )
+        .eq('quiz_id', quizId)
+        .order('id', { ascending: false })
 
-    if (!isOwner) {
-      query = query.eq('user_id', profile.id)
-    }
+      if (!isOwner) {
+        query = query.eq('user_id', profile.id)
+      }
 
-    const { data } = await query
-    setRows((data ?? []) as AttemptRow[])
+      const { data, error } = await query
+      if (error) throw error
+      setRows((data ?? []) as AttemptRow[])
+    }, 'Results refreshed.')
     setLoading(false)
   }
 
@@ -54,7 +59,7 @@ export function ResultsClient(props: {
       profile={profile}
       actions={
         <>
-          <button onClick={load} className="btn ">
+          <button onClick={load} disabled={loading} className="btn ">
             Refresh
           </button>
           <Link href={`/quizzes/${quizId}/take`} className="btn btn-primary ">

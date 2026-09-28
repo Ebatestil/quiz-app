@@ -1,4 +1,5 @@
 'use client'
+import { isChoiceQuestion, answerInstructions } from '@/lib/questions'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -9,6 +10,7 @@ import {
   requestFullscreen,
 } from '@/lib/fullscreen'
 import type { AttemptPayload, TerminationReason } from '@/lib/types'
+import { useFeedback, useNotify } from '@/components/Notifications'
 import { Brand } from '@/components/AppShell'
 
 type QuizMeta = {
@@ -31,6 +33,8 @@ const VIOLATION_LABELS: Record<string, string> = {
 
 export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   const { token, quiz } = props
+  const feedback = useFeedback()
+  const notify = useNotify()
 
   const [phase, setPhase] = useState<Phase>(
     quiz?.is_published ? 'landing' : 'error',
@@ -60,27 +64,35 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
   const lockdownOn = !!quiz?.lockdown_enabled
 
-  const finishWithViolation = useCallback(async (type: string) => {
-    if (
-      terminatedRef.current ||
-      phaseRef.current !== 'taking' ||
-      !attemptIdRef.current
-    )
-      return
-    terminatedRef.current = true
-
-    const supabase = createClient()
-    const { data } = await supabase.rpc('report_violation', {
-      p_attempt_id: attemptIdRef.current,
-      p_type: type,
-    })
-
-    await exitFullscreen()
-
-    setAttempt(data as AttemptPayload)
-    setTerminationReason(type as TerminationReason)
-    setPhase('terminated')
-  }, [])
+  const finishWithViolation = useCallback(
+    async (type: string) => {
+      if (
+        terminatedRef.current ||
+        phaseRef.current !== 'taking' ||
+        !attemptIdRef.current
+      )
+        return
+      terminatedRef.current = true
+      setTerminationReason(type as TerminationReason)
+      setSubmitting(true)
+      const saved = await feedback(async () => {
+        const { data, error } = await createClient().rpc('report_violation', {
+          p_attempt_id: attemptIdRef.current,
+          p_type: type,
+        })
+        if (error) throw error
+        setAttempt(data as AttemptPayload)
+        setPhase('terminated')
+        await exitFullscreen()
+      }, 'Exam submitted automatically.')
+      if (!saved)
+        setError(
+          'Automatic submission failed. Your answers are locked. Select Submit Exam to try again.',
+        )
+      setSubmitting(false)
+    },
+    [feedback],
+  )
 
   // Lockdown listeners — only active while actively taking a lockdown exam.
   useEffect(() => {
@@ -170,7 +182,10 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       }
 
       const supabase = createClient()
-      const { error: signInError } = await supabase.auth.signInAnonymously()
+      const { data: sessionData } = await supabase.auth.getSession()
+      const { error: signInError } = sessionData.session?.user.is_anonymous
+        ? { error: null }
+        : await supabase.auth.signInAnonymously()
       if (signInError) {
         setError(
           'Could not start the exam (anonymous sign-in is unavailable). Please tell your teacher.',
@@ -191,6 +206,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
       if (rpcError) {
         setError(rpcError.message)
+        notify(rpcError.message, 'error')
         setPhase('landing')
         await exitFullscreen()
         return
@@ -214,59 +230,72 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   }
 
   async function refresh(attemptId: number) {
-    const supabase = createClient()
-    const { data } = await supabase.rpc('get_attempt', {
+    const { data, error } = await createClient().rpc('get_attempt', {
       p_attempt_id: attemptId,
     })
+    if (error) throw error
     setAttempt(data as AttemptPayload)
   }
-
   const q = attempt?.questions[idx]
-
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset the textarea when the current question changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize the editor with the saved answer
     setTextAnswer(q?.answer_text ?? '')
   }, [q?.id, q?.answer_text])
 
-  async function answer(selectedIndex: number) {
-    if (!attempt || submitting || !q) return
-    setSubmitting(true)
-    const supabase = createClient()
-    await supabase.rpc('submit_answer', {
+  async function saveAnswer(selectedIndex: number | null, text: string | null) {
+    if (!attempt || !q) return
+    const { error } = await createClient().rpc('submit_answer', {
       p_attempt_id: attempt.id,
       p_question_id: q.id,
       p_selected_index: selectedIndex,
-      p_answer_text: null,
+      p_answer_text: text,
     })
-    await refresh(attempt.id)
-    setSubmitting(false)
+    if (error) throw error
   }
-
-  async function submitTextAnswer() {
-    if (!attempt || !q || submitting) return
+  async function answer(selectedIndex: number) {
+    if (!attempt || submitting || !q || terminatedRef.current) return
     setSubmitting(true)
-    const supabase = createClient()
-    await supabase.rpc('submit_answer', {
-      p_attempt_id: attempt.id,
-      p_question_id: q.id,
-      p_selected_index: null,
-      p_answer_text: textAnswer,
-    })
-    await refresh(attempt.id)
+    await feedback(async () => {
+      await saveAnswer(selectedIndex, null)
+      await refresh(attempt.id)
+    }, 'Answer saved.')
     setSubmitting(false)
   }
-
+  async function submitTextAnswer() {
+    if (!attempt || !q || submitting || terminatedRef.current) return
+    setSubmitting(true)
+    await feedback(async () => {
+      await saveAnswer(null, textAnswer)
+      await refresh(attempt.id)
+    }, 'Answer saved.')
+    setSubmitting(false)
+  }
   async function finishExam() {
     if (!attempt || submitting) return
     setSubmitting(true)
-    terminatedRef.current = true
-    const supabase = createClient()
-    const { data } = await supabase.rpc('complete_attempt', {
-      p_attempt_id: attempt.id,
-    })
-    await exitFullscreen()
-    setAttempt(data as AttemptPayload)
-    setPhase('completed')
+    const saved = await feedback(async () => {
+      if (
+        !terminationReason &&
+        q &&
+        !isChoiceQuestion(q.type) &&
+        textAnswer.trim()
+      )
+        await saveAnswer(null, textAnswer)
+      const { data, error } = terminationReason
+        ? await createClient().rpc('report_violation', {
+            p_attempt_id: attempt.id,
+            p_type: terminationReason,
+          })
+        : await createClient().rpc('complete_attempt', {
+            p_attempt_id: attempt.id,
+          })
+      if (error) throw error
+      terminatedRef.current = true
+      setAttempt(data as AttemptPayload)
+      setPhase(terminationReason ? 'terminated' : 'completed')
+      await exitFullscreen()
+    }, 'Exam submitted successfully.')
+    if (saved) setError(null)
     setSubmitting(false)
   }
 
@@ -431,6 +460,14 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
           <span className="eyebrow">Your exam</span>
           <h1>{quiz.title}</h1>
         </header>
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            {error}
+          </div>
+        )}
         <div className="exam-paper">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium text-slate-600">
@@ -451,7 +488,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             {q.prompt}
           </div>
 
-          {q.type === 'multiple_choice' ? (
+          {isChoiceQuestion(q.type) ? (
             <div className="mt-6 space-y-3">
               {(q.options ?? []).map((opt, optIdx) => {
                 const selected = q.selected_index === optIdx
@@ -459,7 +496,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                   <button
                     key={optIdx}
                     aria-pressed={selected}
-                    disabled={submitting}
+                    disabled={submitting || !!terminationReason}
                     onClick={() => answer(optIdx)}
                     className={[
                       'answer-option w-full rounded-md border px-4 py-4 text-left text-sm transition',
@@ -478,16 +515,30 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             </div>
           ) : (
             <div className="mt-6 space-y-3">
+              <p className="text-xs text-slate-500">
+                {answerInstructions(q?.type ?? 'identification')}
+              </p>
               <textarea
                 value={textAnswer}
                 onChange={(e) => setTextAnswer(e.target.value)}
-                disabled={submitting}
-                placeholder="Type your answer here"
+                disabled={submitting || !!terminationReason}
+                aria-label={
+                  q?.type === 'enumeration'
+                    ? 'Enumeration answers'
+                    : 'Your answer'
+                }
+                placeholder={
+                  q?.type === 'enumeration'
+                    ? 'First answer\nSecond answer\nThird answer'
+                    : 'Type your answer here'
+                }
                 className="min-h-32 w-full rounded-md border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 disabled:opacity-60"
               />
               <button
                 onClick={submitTextAnswer}
-                disabled={submitting || !textAnswer.trim()}
+                disabled={
+                  submitting || !!terminationReason || !textAnswer.trim()
+                }
                 className="btn btn-primary disabled:opacity-50"
               >
                 Save Answer
@@ -499,7 +550,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             <button
               className="btn disabled:opacity-50"
               onClick={() => setIdx((i) => Math.max(0, i - 1))}
-              disabled={idx === 0}
+              disabled={submitting || !!terminationReason || idx === 0}
             >
               Previous
             </button>
@@ -516,7 +567,11 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                 onClick={() =>
                   setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))
                 }
-                disabled={idx === attempt.questions.length - 1}
+                disabled={
+                  submitting ||
+                  !!terminationReason ||
+                  idx === attempt.questions.length - 1
+                }
               >
                 Next
               </button>

@@ -5,9 +5,11 @@ import type { FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Brand, Field, Icon } from '@/components/AppShell'
+import { useNotify } from '@/components/Notifications'
 
 function LoginForm() {
   const router = useRouter()
+  const notify = useNotify()
   const searchParams = useSearchParams()
   const wasDisabled = searchParams.get('disabled') === '1'
 
@@ -38,6 +40,7 @@ function LoginForm() {
           await supabase.auth.signInWithPassword({ email, password })
         if (signInError) {
           setError(signInError.message)
+          notify(signInError.message, 'error')
           return
         }
 
@@ -51,9 +54,11 @@ function LoginForm() {
         if (profile?.disabled_at) {
           await supabase.auth.signOut()
           setError('Account disabled')
+          notify('Account disabled.', 'error')
           return
         }
 
+        notify('Signed in successfully.')
         router.replace('/')
         router.refresh()
       } else {
@@ -64,18 +69,25 @@ function LoginForm() {
         })
         if (signUpError) {
           setError(signUpError.message)
+          notify(signUpError.message, 'error')
           return
         }
 
         if (!data.session) {
           setInfo('Check your email to confirm your account, then log in.')
+          notify('Account created. Check your email to confirm your account.')
           setMode('login')
           return
         }
 
+        notify('Account created successfully.')
         router.replace('/')
         router.refresh()
       }
+    } catch {
+      const message = 'Could not connect. Please try again.'
+      setError(message)
+      notify(message, 'error')
     } finally {
       setSubmitting(false)
     }

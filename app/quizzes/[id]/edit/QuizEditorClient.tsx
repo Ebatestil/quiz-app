@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Area, Field, Surface } from '@/components/AppShell'
+import { useFeedback } from '@/components/Notifications'
+import { isChoiceQuestion, questionTypeLabels } from '@/lib/questions'
 import type { Profile, Question, QuestionType, Quiz } from '@/lib/types'
 
 const subscribeToOrigin = () => () => {}
@@ -47,78 +49,106 @@ export function QuizEditorClient(props: {
   const [correctIndex, setCorrectIndex] = useState(0)
   const [answerText, setAnswerText] = useState('')
   const [explanation, setExplanation] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const feedback = useFeedback()
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
+
+  async function mutate(operation: () => Promise<void>, success: string) {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    try {
+      await feedback(operation, success)
+    } finally {
+      pending.current = false
+      setBusy(false)
+    }
+  }
 
   async function saveQuiz(e: FormEvent) {
     e.preventDefault()
-    const supabase = createClient()
-    const { data, error: err } = await supabase
-      .from('quizzes')
-      .update({
-        title: title.trim(),
-        description: description.trim() ? description.trim() : null,
-        is_published: isPublished,
-        lockdown_enabled: lockdownEnabled,
-      })
-      .eq('id', quizId)
-      .select()
-      .single()
-
-    if (err) {
-      setError(err.message)
-      return
-    }
-    setQuiz(data as Quiz)
-    router.refresh()
+    await mutate(async () => {
+      if (!title.trim()) throw new Error('Enter a quiz title.')
+      const { data, error } = await createClient()
+        .from('quizzes')
+        .update({
+          title: title.trim(),
+          description: description.trim() || null,
+          is_published: isPublished,
+          lockdown_enabled: lockdownEnabled,
+        })
+        .eq('id', quizId)
+        .select()
+        .single()
+      if (error) throw error
+      setQuiz(data as Quiz)
+      router.refresh()
+    }, 'Quiz saved successfully.')
   }
 
   async function addQuestion(e: FormEvent) {
     e.preventDefault()
-    setError(null)
-    const supabase = createClient()
-    const { data, error: err } = await supabase
-      .from('questions')
-      .insert({
-        quiz_id: quizId,
-        type: questionType,
-        prompt: prompt.trim(),
-        options: questionType === 'multiple_choice' ? options : null,
-        correct_index:
-          questionType === 'multiple_choice'
-            ? Math.min(correctIndex, Math.max(0, options.length - 1))
+    await mutate(async () => {
+      if (!prompt.trim()) throw new Error('Enter a question.')
+      const choice = isChoiceQuestion(questionType)
+      const questionOptions =
+        questionType === 'true_false' ? ['True', 'False'] : options
+      if (choice && questionOptions.length < 2)
+        throw new Error('Enter at least two answer options.')
+      if (!choice && !answerText.trim())
+        throw new Error('Enter the expected answer.')
+      const { data, error } = await createClient()
+        .from('questions')
+        .insert({
+          quiz_id: quizId,
+          type: questionType,
+          prompt: prompt.trim(),
+          options: choice ? questionOptions : null,
+          correct_index: choice
+            ? Math.min(correctIndex, questionOptions.length - 1)
             : null,
-        answer_text:
-          questionType === 'identification' ? answerText.trim() : null,
-        explanation: explanation.trim() ? explanation.trim() : null,
-      })
-      .select()
-      .single()
-
-    if (err) {
-      setError(err.message)
-      return
-    }
-
-    setQuestions((prev) => [...prev, data as Question])
-    setPrompt('')
-    setExplanation('')
-    setCorrectIndex(0)
-    setAnswerText('')
-    setQuestionType('multiple_choice')
+          answer_text: choice ? null : answerText.trim(),
+          explanation: explanation.trim() || null,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setQuestions((prev) => [...prev, data as Question])
+      setPrompt('')
+      setExplanation('')
+      setCorrectIndex(0)
+      setAnswerText('')
+      router.refresh()
+    }, 'Question added.')
   }
 
   async function removeQuestion(qid: number) {
-    const supabase = createClient()
-    await supabase.from('questions').delete().eq('id', qid)
-    setQuestions((prev) => prev.filter((q) => q.id !== qid))
+    await mutate(async () => {
+      const { error } = await createClient()
+        .from('questions')
+        .delete()
+        .eq('id', qid)
+        .select('id')
+        .single()
+      if (error) throw error
+      setQuestions((prev) => prev.filter((q) => q.id !== qid))
+      router.refresh()
+    }, 'Question removed.')
   }
 
   async function deleteQuiz() {
-    if (!confirm('Delete this quiz?')) return
-    const supabase = createClient()
-    await supabase.from('quizzes').delete().eq('id', quizId)
-    router.replace('/')
-    router.refresh()
+    if (!confirm('Delete this quiz and its attempts?')) return
+    await mutate(async () => {
+      const { error } = await createClient()
+        .from('quizzes')
+        .delete()
+        .eq('id', quizId)
+        .select('id')
+        .single()
+      if (error) throw error
+      router.replace('/')
+      router.refresh()
+    }, 'Quiz deleted.')
   }
 
   const origin = useSyncExternalStore(
@@ -126,13 +156,15 @@ export function QuizEditorClient(props: {
     getOrigin,
     getServerOrigin,
   )
-  const examLink = origin ? `${origin}/exam/${quiz.share_token}` : ''
+  const examLink = origin ? origin + '/exam/' + quiz.share_token : ''
 
   async function copyExamLink() {
-    if (!examLink) return
-    await navigator.clipboard.writeText(examLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    await feedback(async () => {
+      if (!examLink) throw new Error('The exam link is not ready yet.')
+      await navigator.clipboard.writeText(examLink)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }, 'Exam link copied.')
   }
 
   return (
@@ -150,6 +182,7 @@ export function QuizEditorClient(props: {
           </Link>
           <button
             onClick={deleteQuiz}
+            disabled={busy}
             className="rounded-md border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
           >
             Delete
@@ -157,55 +190,52 @@ export function QuizEditorClient(props: {
         </>
       }
     >
-      {error ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-          {error}
-        </div>
-      ) : null}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.4fr]">
         <div className="space-y-6">
           <Surface
             title="01 / Quiz details"
             subtitle="The essentials your students will see."
           >
-            <form onSubmit={saveQuiz} className="space-y-3">
-              <Field
-                label="Quiz title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-              <Area
-                label="Description"
-                className="min-h-24"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-              <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-                <span className="text-sm font-medium text-slate-700">
-                  Published
-                </span>
-                <input
-                  type="checkbox"
-                  checked={isPublished}
-                  onChange={(e) => setIsPublished(e.target.checked)}
+            <form onSubmit={saveQuiz}>
+              <fieldset disabled={busy} className="space-y-3">
+                <Field
+                  label="Quiz title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                 />
-              </label>
-              <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-700">
-                    Exam Mode (lockdown)
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Fullscreen required; switching tabs/apps auto-submits.
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={lockdownEnabled}
-                  onChange={(e) => setLockdownEnabled(e.target.checked)}
+                <Area
+                  label="Description"
+                  className="min-h-24"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
-              </label>
-              <button className="btn btn-primary w-full">Save Quiz</button>
+                <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                  <span className="text-sm font-medium text-slate-700">
+                    Published
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isPublished}
+                    onChange={(e) => setIsPublished(e.target.checked)}
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">
+                      Exam Mode (lockdown)
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Fullscreen required; switching tabs/apps auto-submits.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={lockdownEnabled}
+                    onChange={(e) => setLockdownEnabled(e.target.checked)}
+                  />
+                </label>
+                <button className="btn btn-primary w-full">Save Quiz</button>
+              </fieldset>
             </form>
           </Surface>
 
@@ -213,7 +243,7 @@ export function QuizEditorClient(props: {
             title="Share with your students"
             subtitle="One link. No student accounts needed."
           >
-            {isPublished ? (
+            {quiz.is_published ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
                   <code className="flex-1 truncate text-sm text-slate-700">
@@ -226,7 +256,7 @@ export function QuizEditorClient(props: {
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
-                {lockdownEnabled ? (
+                {quiz.lockdown_enabled ? (
                   <p className="text-xs text-amber-600">
                     Exam Mode is on: students must allow fullscreen, and the
                     attempt auto-submits the instant they switch tabs, switch
@@ -250,72 +280,110 @@ export function QuizEditorClient(props: {
             title="02 / Write a question"
             subtitle="Choose a format, then add your answer and explanation."
           >
-            <form onSubmit={addQuestion} className="space-y-3">
-              <Area
-                label="Question"
-                className="min-h-24"
-                placeholder="What is JavaScript?"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                required
-              />
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-slate-700">
-                  Question type
-                </span>
-                <select
-                  value={questionType}
-                  onChange={(e) =>
-                    setQuestionType(e.target.value as QuestionType)
-                  }
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500"
-                >
-                  <option value="multiple_choice">Multiple choice</option>
-                  <option value="identification">Identification</option>
-                </select>
-              </label>
-              {questionType === 'multiple_choice' ? (
-                <>
-                  <Area
-                    label="Answer options"
-                    className="min-h-28"
-                    value={optionsText}
-                    onChange={(e) => setOptionsText(e.target.value)}
-                  />
+            <form onSubmit={addQuestion}>
+              <fieldset disabled={busy} className="space-y-3">
+                <Area
+                  label="Question"
+                  className="min-h-24"
+                  placeholder="What is JavaScript?"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  required
+                />
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-slate-700">
+                    Question type
+                  </span>
+                  <select
+                    value={questionType}
+                    onChange={(e) => {
+                      setQuestionType(e.target.value as QuestionType)
+                      setCorrectIndex(0)
+                      setAnswerText('')
+                    }}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500"
+                  >
+                    <option value="multiple_choice">Multiple choice</option>
+                    <option value="identification">Identification</option>
+                    <option value="true_false">True or false</option>
+                    <option value="enumeration">Enumeration</option>
+                  </select>
+                </label>
+                {questionType === 'multiple_choice' ? (
+                  <>
+                    <Area
+                      label="Answer options"
+                      className="min-h-28"
+                      value={optionsText}
+                      onChange={(e) => setOptionsText(e.target.value)}
+                    />
+                    <label className="form-field">
+                      <span>Correct answer</span>
+                      <select
+                        className="form-input"
+                        value={Math.min(
+                          correctIndex,
+                          Math.max(0, options.length - 1),
+                        )}
+                        onChange={(e) =>
+                          setCorrectIndex(Number(e.target.value))
+                        }
+                      >
+                        {options.map((option, index) => (
+                          <option key={index} value={index}>
+                            {index + 1}. {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                ) : questionType === 'true_false' ? (
                   <label className="form-field">
                     <span>Correct answer</span>
                     <select
                       className="form-input"
-                      value={Math.min(
-                        correctIndex,
-                        Math.max(0, options.length - 1),
-                      )}
+                      value={correctIndex}
                       onChange={(e) => setCorrectIndex(Number(e.target.value))}
                     >
-                      {options.map((option, index) => (
-                        <option key={index} value={index}>
-                          {index + 1}. {option}
-                        </option>
-                      ))}
+                      <option value={0}>True</option>
+                      <option value={1}>False</option>
                     </select>
                   </label>
-                </>
-              ) : (
-                <Field
-                  label="Correct answer"
-                  placeholder="Type the expected answer"
-                  value={answerText}
-                  onChange={(e) => setAnswerText(e.target.value)}
+                ) : questionType === 'enumeration' ? (
+                  <>
+                    <Area
+                      label="Expected answers (one per line)"
+                      placeholder={'Mercury\nVenus\nEarth'}
+                      value={answerText}
+                      onChange={(e) => setAnswerText(e.target.value)}
+                      rows={5}
+                      required
+                    />
+                    <p className="text-xs text-slate-500">
+                      Order does not matter. All listed answers must match for
+                      one point. Capitalization and extra spaces are ignored.
+                    </p>
+                  </>
+                ) : (
+                  <Field
+                    label="Correct answer"
+                    placeholder="Type the expected answer"
+                    required
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                  />
+                )}
+                <Area
+                  label="Explanation"
+                  className="min-h-20"
+                  placeholder="Optional feedback after scoring"
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
                 />
-              )}
-              <Area
-                label="Explanation"
-                className="min-h-20"
-                placeholder="Optional feedback after scoring"
-                value={explanation}
-                onChange={(e) => setExplanation(e.target.value)}
-              />
-              <button className="btn btn-primary w-full">+ Add Question</button>
+                <button className="btn btn-primary w-full">
+                  + Add Question
+                </button>
+              </fieldset>
             </form>
           </Surface>
         </div>
@@ -341,14 +409,12 @@ export function QuizEditorClient(props: {
                         Question {index + 1}
                       </div>
                       <div className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        {q.type === 'multiple_choice'
-                          ? 'Multiple choice'
-                          : 'Identification'}
+                        {questionTypeLabels[q.type]}
                       </div>
                       <div className="mt-2 text-sm font-semibold text-slate-900">
                         {q.prompt}
                       </div>
-                      {q.type === 'multiple_choice' ? (
+                      {isChoiceQuestion(q.type) ? (
                         <div className="mt-3 space-y-2">
                           {(q.options ?? []).map((opt, idx) => (
                             <div
@@ -366,7 +432,10 @@ export function QuizEditorClient(props: {
                         </div>
                       ) : (
                         <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                          Correct answer: {q.answer_text}
+                          Correct answer:{' '}
+                          <span className="whitespace-pre-line">
+                            {q.answer_text}
+                          </span>
                         </div>
                       )}
                       {q.explanation ? (
@@ -377,6 +446,7 @@ export function QuizEditorClient(props: {
                     </div>
                     <button
                       onClick={() => removeQuestion(q.id)}
+                      disabled={busy}
                       className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                     >
                       Remove

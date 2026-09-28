@@ -20,7 +20,8 @@ export type Quiz = {
   questions_count?: number
 }
 
-export type QuestionType = 'multiple_choice' | 'identification'
+export type QuestionType =
+  'multiple_choice' | 'identification' | 'true_false' | 'enumeration'
 
 export type Question = {
   id: number
@@ -45,7 +46,8 @@ export type AttemptQuestionView = {
   is_correct: boolean | null
 }
 
-export type TerminationReason = 'tab_switch' | 'blur' | 'fullscreen_exit' | 'devtools' | null
+export type TerminationReason =
+  'tab_switch' | 'blur' | 'fullscreen_exit' | 'devtools' | null
 
 export type AttemptPayload = {
   id: number

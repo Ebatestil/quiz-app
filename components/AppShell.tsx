@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
+import { useFeedback } from './Notifications'
 
 export function Icon({
   name,
@@ -87,6 +88,7 @@ export function AppShell(props: {
 }) {
   const { profile } = props
   const router = useRouter()
+  const feedback = useFeedback()
   const pathname = usePathname()
   const items = [
     { label: 'My quizzes', to: '/', icon: 'grid' as const },
@@ -96,9 +98,12 @@ export function AppShell(props: {
   ]
 
   async function logout() {
-    await createClient().auth.signOut()
-    router.replace('/login')
-    router.refresh()
+    await feedback(async () => {
+      const { error } = await createClient().auth.signOut()
+      if (error) throw error
+      router.replace('/login')
+      router.refresh()
+    }, 'Signed out.')
   }
 
   return (
