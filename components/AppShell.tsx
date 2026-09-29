@@ -92,6 +92,7 @@ export function AppShell(props: {
   const pathname = usePathname()
   const items = [
     { label: 'My quizzes', to: '/', icon: 'grid' as const },
+    { label: 'Classes', to: '/classes', icon: 'users' as const },
     ...(profile.is_admin
       ? [{ label: 'People', to: '/admin/users', icon: 'users' as const }]
       : []),

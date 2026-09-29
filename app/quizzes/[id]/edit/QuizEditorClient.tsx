@@ -8,7 +8,13 @@ import { createClient } from '@/lib/supabase/client'
 import { AppShell, Area, Field, Surface } from '@/components/AppShell'
 import { useFeedback } from '@/components/Notifications'
 import { isChoiceQuestion, questionTypeLabels } from '@/lib/questions'
-import type { Profile, Question, QuestionType, Quiz } from '@/lib/types'
+import type {
+  ClassSection,
+  Profile,
+  Question,
+  QuestionType,
+  Quiz,
+} from '@/lib/types'
 
 const subscribeToOrigin = () => () => {}
 const getOrigin = () => window.location.origin
@@ -18,6 +24,8 @@ export function QuizEditorClient(props: {
   profile: Profile
   initialQuiz: Quiz
   initialQuestions: Question[]
+  classes: ClassSection[]
+  initialClassIds: number[]
 }) {
   const { profile } = props
   const router = useRouter()
@@ -30,6 +38,10 @@ export function QuizEditorClient(props: {
   const [description, setDescription] = useState(quiz.description ?? '')
   const [isPublished, setIsPublished] = useState(quiz.is_published)
   const [lockdownEnabled, setLockdownEnabled] = useState(quiz.lockdown_enabled)
+  const [minutes, setMinutes] = useState(
+    quiz.time_limit_minutes?.toString() ?? '',
+  )
+  const [classIds, setClassIds] = useState<number[]>(props.initialClassIds)
   const [copied, setCopied] = useState(false)
 
   const [prompt, setPrompt] = useState('')
@@ -69,17 +81,23 @@ export function QuizEditorClient(props: {
     e.preventDefault()
     await mutate(async () => {
       if (!title.trim()) throw new Error('Enter a quiz title.')
-      const { data, error } = await createClient()
-        .from('quizzes')
-        .update({
-          title: title.trim(),
-          description: description.trim() || null,
-          is_published: isPublished,
-          lockdown_enabled: lockdownEnabled,
-        })
-        .eq('id', quizId)
-        .select()
-        .single()
+      const duration = minutes.trim() ? Number(minutes) : null
+      if (
+        duration !== null &&
+        (!Number.isInteger(duration) || duration < 1 || duration > 480)
+      )
+        throw new Error(
+          'Set a timer between 1 and 480 minutes, or leave it blank.',
+        )
+      const { data, error } = await createClient().rpc('save_quiz_settings', {
+        p_quiz_id: quizId,
+        p_title: title.trim(),
+        p_description: description.trim() || null,
+        p_published: isPublished,
+        p_lockdown: lockdownEnabled,
+        p_minutes: duration,
+        p_classes: classIds,
+      })
       if (error) throw error
       setQuiz(data as Quiz)
       router.refresh()
@@ -225,7 +243,7 @@ export function QuizEditorClient(props: {
                       Exam Mode (lockdown)
                     </div>
                     <div className="text-xs text-slate-500">
-                      Fullscreen required; switching tabs/apps auto-submits.
+                      Requests fullscreen; switching tabs/apps auto-submits.
                     </div>
                   </div>
                   <input
@@ -234,6 +252,60 @@ export function QuizEditorClient(props: {
                     onChange={(e) => setLockdownEnabled(e.target.checked)}
                   />
                 </label>
+                <Field
+                  label="Time limit (minutes)"
+                  type="number"
+                  min={1}
+                  max={480}
+                  step={1}
+                  value={minutes}
+                  onChange={(e) => setMinutes(e.target.value)}
+                  placeholder="No time limit"
+                />
+                <p className="text-xs text-slate-500">
+                  Leave blank for no timer. Each student gets the full duration
+                  from the start of their attempt. Changes apply to new attempts
+                  only.
+                </p>
+                <fieldset className="rounded-md border border-slate-200 p-4">
+                  <legend className="px-1 text-sm font-medium">
+                    Assigned classes
+                  </legend>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Only registered students in these sections can start this
+                    quiz.
+                  </p>
+                  {props.classes.map((section) => (
+                    <label
+                      key={section.id}
+                      className="flex items-center gap-2 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={classIds.includes(section.id)}
+                        onChange={(e) =>
+                          setClassIds((prev) =>
+                            e.target.checked
+                              ? [...prev, section.id]
+                              : prev.filter((id) => id !== section.id),
+                          )
+                        }
+                      />
+                      {section.name}
+                    </label>
+                  ))}
+                  {!props.classes.length && (
+                    <p className="text-sm text-slate-500">
+                      Create a class before publishing.
+                    </p>
+                  )}
+                  <Link
+                    href="/classes"
+                    className="mt-2 inline-block text-sm underline"
+                  >
+                    Manage classes and students
+                  </Link>
+                </fieldset>
                 <button className="btn btn-primary w-full">Save Quiz</button>
               </fieldset>
             </form>
@@ -258,14 +330,14 @@ export function QuizEditorClient(props: {
                 </div>
                 {quiz.lockdown_enabled ? (
                   <p className="text-xs text-amber-600">
-                    Exam Mode is on: students must allow fullscreen, and the
-                    attempt auto-submits the instant they switch tabs, switch
-                    apps, or exit fullscreen.
+                    Exam Mode is on: fullscreen is requested, and the attempt
+                    auto-submits the instant they switch tabs, switch apps, or
+                    exit fullscreen.
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500">
-                    Exam Mode is off — students can take this like a normal
-                    untimed quiz, no lockdown.
+                    Exam Mode is off — students can take this like a normal quiz
+                    without lockdown. The timer still applies if one is set.
                   </p>
                 )}
               </div>

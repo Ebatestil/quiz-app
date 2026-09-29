@@ -12,7 +12,7 @@ Same features as before, plus a new one:
 - Admin panel to create/disable/enable users (the first account you register
   is automatically made an admin)
 - **New: Exam Mode** — share a quiz as a link students can take with no
-  account (just name + student ID), optionally locked down so switching
+  account (registered first and last name + class), optionally locked down so switching
   tabs/apps auto-submits the exam. See "Exam Mode" below.
 
 ## 1. Create a Supabase project
@@ -30,6 +30,9 @@ Same features as before, plus a new one:
    for true/false and enumeration grading and the updated per-quiz attempt checks.
    Finally run [`supabase/005_student_workspace_access.sql`](./supabase/005_student_workspace_access.sql)
    to restrict anonymous exam sessions to student access and protect workspace operations.
+   Then run [`supabase/006_classes_and_timers.sql`](./supabase/006_classes_and_timers.sql)
+   for teacher rosters, class assignments, and server-enforced timers. Existing quizzes
+   must be assigned to classes before students can start new shared attempts.
    Apply these migrations before deploying the updated app. Vercel does not run SQL migrations.
 4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
    Students use this to take an exam without creating an account.
@@ -93,9 +96,8 @@ question only when the complete list matches, in any order. Case, blank lines,
 and extra whitespace are ignored; missing, extra, or incorrectly repeated items
 are marked incorrect. True/false questions also count as one point.
 
-The same name can take different quizzes. A repeat is blocked only when both
-the quiz and normalized full name match a previous attempt. Unfinished attempts
-still count. Each quiz has its own exam link; use that quiz's saved link.
+Students can take different quizzes. A repeat is blocked per registered student
+and quiz, including unfinished attempts. Each quiz has its own exam link.
 
 Save, create, delete, copy, answer, submission, and account-management actions
 show success or error notifications. Failed saves retain entered content, and
@@ -103,15 +105,24 @@ the exam-link panel reflects saved publish/lockdown settings.
 
 Any quiz can now be turned into a shareable exam:
 
-1. Open the quiz in the editor and **publish** it.
-2. Toggle **Exam Mode (lockdown)** if you want the security features below.
-3. Copy the **Exam Link** shown in the editor and send it to your students
-   (email, chat, LMS, however you'd share a link).
-4. Students open the link, type their name and (optional) student ID — no
-   account needed — and start the exam.
-5. See every submission, with score and status, on the quiz's **Results**
-   page. Click **Review** on any attempt to see a full question-by-question
-   breakdown.
+1. Open **Classes** and create each class/section. Register students with separate
+   first and last names. Names can be edited or removed; old submissions keep their
+   original student and section labels.
+2. Open the quiz editor and select one or more **Assigned classes**. Optionally set
+   a **Time limit (minutes)** from 1 to 480; leave it blank for no timer. Publish and save.
+3. Enable **Exam Mode (lockdown)** if needed, then copy the quiz's exam link.
+4. Students select their class and type their registered first and last name.
+   Unregistered names and unassigned classes cannot start an attempt. No student
+   number is collected.
+5. Review submissions under **Results**, 15 per page, including section and expiry status.
+
+The timer starts when the server creates the attempt. Changing a quiz's duration
+does not change active attempts. At expiry, the browser locks answers and submits
+saved responses. The server rejects late answers independently of the browser.
+If the student is offline or closes the page, finalization occurs on reconnection
+or when the teacher loads results; the deadline remains the original expiry time.
+There is no background scheduler requirement. Unsaved text is not included.
+Existing untimed attempts remain untimed after migration.
 
 **What "lockdown" actually does:** a browser can't truly *prevent* someone
 from alt-tabbing or opening another app — no website has that power. What it
@@ -133,13 +144,13 @@ website. If you need guaranteed lockdown, that requires managed/kiosk
 devices, which is outside what a web app can do.
 
 **Known limitations:**
-- Shared exams allow one attempt per full name per quiz, ignoring case and
-  repeated/leading/trailing whitespace. Student ID remains optional and does
-  not change this rule. Unfinished and auto-submitted attempts also count;
-  reopening the link does not resume an attempt. Existing attempts are kept
-  and checked after migration 003 is applied. Different students with the
-  same full name must use distinct names agreed with their teacher. Names
-  are self-reported: entering a different name can bypass this restriction.
+- Name matching ignores capitalization and extra whitespace, but not spelling
+  differences. Names are checked against the selected class's roster. This is
+  roster eligibility, not proof of identity: someone who knows another registered
+  name can impersonate that student. Two students with identical first and last
+  names in the same class need distinguishable registered names (for example,
+  include a middle name in the first-name field). Reopening a link does not resume
+  an unfinished attempt. Legacy submissions still count by normalized full name.
 - `blur` events (used to detect app-switching) can occasionally fire from
   innocuous things like clicking a browser extension icon — treat a single
   flagged attempt as "worth a look," not automatic proof of cheating.
@@ -188,3 +199,9 @@ devices, which is outside what a web app can do.
   registrations won't get a session until they click the confirmation email link.
   The register form already handles this and tells the user to check their
   inbox.
+
+## Database regression checks
+
+Run `tests/database-regression.sql` only in an empty disposable PostgreSQL database.
+It exercises the historical migrations, then applies migration 006 twice and runs
+`tests/classes-and-timers.sql`. Never run the fixture against a live Supabase project.

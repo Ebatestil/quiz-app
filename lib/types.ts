@@ -14,6 +14,7 @@ export type Quiz = {
   description: string | null
   is_published: boolean
   share_token: string
+  time_limit_minutes: number | null
   lockdown_enabled: boolean
   created_at: string
   updated_at: string
@@ -47,7 +48,7 @@ export type AttemptQuestionView = {
 }
 
 export type TerminationReason =
-  'tab_switch' | 'blur' | 'fullscreen_exit' | 'devtools' | null
+  'tab_switch' | 'blur' | 'fullscreen_exit' | 'devtools' | 'time_expired' | null
 
 export type AttemptPayload = {
   id: number
@@ -57,8 +58,10 @@ export type AttemptPayload = {
   score: number | null
   total_questions: number | null
   student_name: string | null
-  student_number: string | null
+  class_name: string | null
   termination_reason: TerminationReason
+  expires_at: string | null
+  server_now: string
   questions: AttemptQuestionView[]
 }
 
@@ -69,6 +72,14 @@ export type AttemptRow = {
   score: number | null
   total_questions: number | null
   student_name: string | null
-  student_number: string | null
+  class_name: string | null
   termination_reason: TerminationReason
+}
+
+export type ClassSection = { id: number; name: string; user_id?: string }
+export type RosterStudent = {
+  id: number
+  class_id: number
+  first_name: string
+  last_name: string
 }

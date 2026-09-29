@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { AttemptTimer } from '@/components/AttemptTimer'
 import { AppShell, Surface } from '@/components/AppShell'
 import { useFeedback } from '@/components/Notifications'
 import type { AttemptPayload, Profile } from '@/lib/types'
@@ -17,6 +18,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
   const [attempt, setAttempt] = useState<AttemptPayload | null>(null)
   const [idx, setIdx] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [timeUp, setTimeUp] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [textAnswer, setTextAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +36,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
       return
     }
     setAttempt(data as AttemptPayload)
+    setTimeUp(false)
     setIdx(0)
     setTextAnswer('')
     setLoading(false)
@@ -66,16 +69,20 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
   }
   async function saveAnswer(selectedIndex: number | null, text: string | null) {
     if (!attempt || !q) return
-    const { error } = await createClient().rpc('submit_answer', {
+    const { data, error } = await createClient().rpc('submit_answer', {
       p_attempt_id: attempt.id,
       p_question_id: q.id,
       p_selected_index: selectedIndex,
       p_answer_text: text,
     })
     if (error) throw error
+    if (data?.expired) {
+      await refresh(attempt.id)
+      throw new Error('Time is up. Your previously saved answers were submitted.')
+    }
   }
   async function answer(selectedIndex: number) {
-    if (!attempt || isCompleted || !q || submitting) return
+    if (!attempt || timeUp || isCompleted || !q || submitting) return
     setSubmitting(true)
     await feedback(async () => {
       await saveAnswer(selectedIndex, null)
@@ -84,7 +91,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
     setSubmitting(false)
   }
   async function submitTextAnswer() {
-    if (!attempt || !q || isCompleted || submitting) return
+    if (!attempt || timeUp || !q || isCompleted || submitting) return
     setSubmitting(true)
     await feedback(async () => {
       await saveAnswer(null, textAnswer)
@@ -93,7 +100,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
     setSubmitting(false)
   }
   async function complete() {
-    if (!attempt || isCompleted || submitting) return
+    if (!attempt || timeUp || isCompleted || submitting) return
     setSubmitting(true)
     await feedback(async () => {
       if (q && !isChoiceQuestion(q.type) && textAnswer.trim())
@@ -164,6 +171,14 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
       }
     >
       <div className="mx-auto max-w-4xl space-y-6">
+        <AttemptTimer
+          attempt={attempt}
+          onDeadline={() => setTimeUp(true)}
+          onComplete={(result) => {
+            setAttempt(result)
+            setTimeUp(true)
+          }}
+        />
         {isCompleted ? (
           <Surface className="bg-emerald-50">
             <div className="text-center">
@@ -172,7 +187,9 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                 {attempt.score}/{attempt.total_questions}
               </div>
               <div className="mt-2 text-sm text-slate-500">
-                You have completed the quiz.
+                {attempt.termination_reason === 'time_expired'
+                  ? 'Time is up. Your saved answers were submitted automatically.'
+                  : 'You have completed the quiz.'}
               </div>
               <div className="mt-5 flex flex-wrap justify-center gap-3">
                 <Link href={`/quizzes/${quizId}/results`} className="btn ">
@@ -224,7 +241,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                     <button
                       key={optIdx}
                       aria-pressed={selected}
-                      disabled={submitting || isCompleted}
+                      disabled={timeUp || submitting || isCompleted}
                       onClick={() => answer(optIdx)}
                       className={[
                         'answer-option w-full rounded-md border px-4 py-4 text-left text-sm transition',
@@ -253,7 +270,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                 <textarea
                   value={textAnswer}
                   onChange={(e) => setTextAnswer(e.target.value)}
-                  disabled={submitting || isCompleted}
+                  disabled={timeUp || submitting || isCompleted}
                   aria-label={
                     q?.type === 'enumeration'
                       ? 'Enumeration answers'
@@ -269,7 +286,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                 {!isCompleted ? (
                   <button
                     onClick={submitTextAnswer}
-                    disabled={submitting || !textAnswer.trim()}
+                    disabled={timeUp || submitting || !textAnswer.trim()}
                     className="btn btn-primary disabled:opacity-50"
                   >
                     Save Answer
@@ -301,7 +318,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
               <button
                 className="btn disabled:opacity-50"
                 onClick={() => setIdx((i) => Math.max(0, i - 1))}
-                disabled={submitting || idx === 0}
+                disabled={timeUp || submitting || idx === 0}
               >
                 Previous
               </button>
@@ -310,7 +327,7 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                   <button
                     className="btn disabled:opacity-50"
                     onClick={complete}
-                    disabled={submitting}
+                    disabled={timeUp || submitting}
                   >
                     Finish Quiz
                   </button>
@@ -320,7 +337,9 @@ export function TakeQuizClient(props: { profile: Profile; quizId: number }) {
                   onClick={() =>
                     setIdx((i) => Math.min(attempt.questions.length - 1, i + 1))
                   }
-                  disabled={submitting || idx === attempt.questions.length - 1}
+                  disabled={
+                    timeUp || submitting || idx === attempt.questions.length - 1
+                  }
                 >
                   Next
                 </button>

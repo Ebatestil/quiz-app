@@ -10,8 +10,13 @@ import {
   isFullscreen,
   requestFullscreen,
 } from '@/lib/fullscreen'
-import type { AttemptPayload, TerminationReason } from '@/lib/types'
+import type {
+  AttemptPayload,
+  ClassSection,
+  TerminationReason,
+} from '@/lib/types'
 import { useFeedback, useNotify } from '@/components/Notifications'
+import { AttemptTimer } from '@/components/AttemptTimer'
 import { Brand } from '@/components/AppShell'
 
 type QuizMeta = {
@@ -19,6 +24,7 @@ type QuizMeta = {
   title: string
   description: string | null
   is_published: boolean
+  time_limit_minutes: number | null
   lockdown_enabled: boolean
 } | null
 
@@ -32,7 +38,11 @@ const VIOLATION_LABELS: Record<string, string> = {
   devtools: 'A blocked shortcut was used (developer tools).',
 }
 
-export function ExamClient(props: { token: string; quiz: QuizMeta }) {
+export function ExamClient(props: {
+  token: string
+  quiz: QuizMeta
+  classes: ClassSection[]
+}) {
   const { token, quiz } = props
   const feedback = useFeedback()
   const notify = useNotify()
@@ -40,8 +50,11 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
   const [phase, setPhase] = useState<Phase>(
     quiz?.is_published ? 'landing' : 'error',
   )
-  const [name, setName] = useState('')
-  const [studentNumber, setStudentNumber] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [classId, setClassId] = useState(
+    props.classes.length === 1 ? String(props.classes[0].id) : '',
+  )
   const [error, setError] = useState<string | null>(
     quiz ? null : 'This exam link is invalid.',
   )
@@ -84,7 +97,11 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
         })
         if (error) throw error
         setAttempt(data as AttemptPayload)
-        setPhase('terminated')
+        setPhase(
+          (data as AttemptPayload).termination_reason === 'time_expired'
+            ? 'completed'
+            : 'terminated',
+        )
         await exitFullscreen()
       }, 'Exam submitted automatically.')
       if (!saved)
@@ -107,7 +124,8 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       finishWithViolation('blur')
     }
     function onFullscreenChange() {
-      if (fullscreenEnforced && !isFullscreen()) finishWithViolation('fullscreen_exit')
+      if (fullscreenEnforced && !isFullscreen())
+        finishWithViolation('fullscreen_exit')
     }
     function onKeyDown(e: KeyboardEvent) {
       const blocked =
@@ -164,9 +182,18 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
   async function startExam(e: FormEvent) {
     e.preventDefault()
-    if (!quiz || !name.trim() || startingRef.current) return
-    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
-    const withoutFullscreen = submitter?.value === 'windowed' && !!fullscreenError
+    if (
+      !quiz ||
+      !firstName.trim() ||
+      !lastName.trim() ||
+      !classId ||
+      startingRef.current
+    )
+      return
+    const submitter = (e.nativeEvent as SubmitEvent)
+      .submitter as HTMLButtonElement | null
+    const withoutFullscreen =
+      submitter?.value === 'windowed' && !!fullscreenError
     startingRef.current = true
     try {
       setError(null)
@@ -177,9 +204,11 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       if (lockdownOn && !withoutFullscreen) {
         const availability = fullscreenAvailability()
         if (availability !== 'available') {
-          setFullscreenError(availability === 'unsupported'
-            ? 'This browser does not support fullscreen for exams. You can start without fullscreen below. Keep this tab open and stay in the browser. Your attempt has not started.'
-            : 'Fullscreen is unavailable in this browser window. Open the link directly in your browser and retry, or start without fullscreen below. Your attempt has not started.')
+          setFullscreenError(
+            availability === 'unsupported'
+              ? 'This browser does not support fullscreen for exams. You can start without fullscreen below. Keep this tab open and stay in the browser. Your attempt has not started.'
+              : 'Fullscreen is unavailable in this browser window. Open the link directly in your browser and retry, or start without fullscreen below. Your attempt has not started.',
+          )
           setPhase('landing')
           return
         }
@@ -214,8 +243,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
         'start_public_attempt',
         {
           p_share_token: token,
-          p_student_name: name.trim(),
-          p_student_number: studentNumber.trim() || null,
+          p_class_id: Number(classId),
+          p_first_name: firstName.trim(),
+          p_last_name: lastName.trim(),
         },
       )
 
@@ -249,7 +279,13 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       p_attempt_id: attemptId,
     })
     if (error) throw error
-    setAttempt(data as AttemptPayload)
+    const result = data as AttemptPayload
+    setAttempt(result)
+    if (result.completed_at) {
+      terminatedRef.current = true
+      setPhase('completed')
+      await exitFullscreen()
+    }
   }
   const q = attempt?.questions[idx]
   useEffect(() => {
@@ -259,13 +295,17 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
 
   async function saveAnswer(selectedIndex: number | null, text: string | null) {
     if (!attempt || !q) return
-    const { error } = await createClient().rpc('submit_answer', {
+    const { data, error } = await createClient().rpc('submit_answer', {
       p_attempt_id: attempt.id,
       p_question_id: q.id,
       p_selected_index: selectedIndex,
       p_answer_text: text,
     })
     if (error) throw error
+    if (data?.expired) {
+      await refresh(attempt.id)
+      throw new Error('Time is up. Your previously saved answers were submitted.')
+    }
   }
   async function answer(selectedIndex: number) {
     if (!attempt || submitting || !q || terminatedRef.current) return
@@ -290,6 +330,7 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     setSubmitting(true)
     const saved = await feedback(async () => {
       if (
+        !terminatedRef.current &&
         !terminationReason &&
         q &&
         !isChoiceQuestion(q.type) &&
@@ -307,7 +348,12 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
       if (error) throw error
       terminatedRef.current = true
       setAttempt(data as AttemptPayload)
-      setPhase(terminationReason ? 'terminated' : 'completed')
+      setPhase(
+        terminationReason &&
+          (data as AttemptPayload).termination_reason !== 'time_expired'
+          ? 'terminated'
+          : 'completed',
+      )
       await exitFullscreen()
     }, 'Exam submitted successfully.')
     if (saved) setError(null)
@@ -369,6 +415,9 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
             {attempt.score}/{attempt.total_questions}
           </div>
           <p className="mt-4 text-sm text-slate-500">
+            {attempt.termination_reason === 'time_expired'
+              ? 'Time is up. Your saved answers were submitted automatically. '
+              : ''}
             Thanks, {attempt.student_name}. You may close this window.
           </p>
         </div>
@@ -389,17 +438,19 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
           <p className="mt-2 text-sm text-slate-500">{quiz.description}</p>
         ) : null}
         <p className="mt-4 text-sm text-slate-600">
-          Only one attempt per full name is allowed for this quiz, including
-          unfinished attempts. Check your name before starting. If you have
-          already started, contact your teacher.
+          Only registered students in an assigned class can take this quiz. One
+          attempt per student is allowed, including unfinished attempts. Check
+          your name before starting. If you have already started, contact your
+          teacher.
         </p>
 
         {lockdownOn ? (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-            This exam monitors tab and app switching, which will submit your exam
-            immediately. We’ll request fullscreen when you start. If your browser
-            cannot open it, you can continue without fullscreen. If fullscreen
-            opens, exiting it will also submit your exam. Close other apps before starting.
+            This exam monitors tab and app switching, which will submit your
+            exam immediately. We’ll request fullscreen when you start. If your
+            browser cannot open it, you can continue without fullscreen. If
+            fullscreen opens, exiting it will also submit your exam. Close other
+            apps before starting.
           </div>
         ) : null}
 
@@ -414,30 +465,65 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
           </div>
         ) : null}
 
+        {quiz.time_limit_minutes && (
+          <p className="mt-4 text-sm font-medium">
+            Time limit: {quiz.time_limit_minutes} minutes. The timer starts when
+            your attempt begins. Save each answer; saved answers are submitted
+            when time runs out.
+          </p>
+        )}
+        {!props.classes.length && (
+          <p role="alert" className="mt-4 text-sm text-amber-700">
+            Your teacher has not assigned any classes to this quiz yet. Please
+            contact them before starting.
+          </p>
+        )}
         <form onSubmit={startExam} className="mt-6 space-y-3">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Class / section
+            <select
+              required
+              value={classId}
+              disabled={phase === 'starting'}
+              onChange={(e) => setClassId(e.target.value)}
+              className="rounded-md border border-slate-200 bg-white px-3 py-2.5"
+            >
+              <option value="">Choose your class</option>
+              {props.classes.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-slate-700">
-              Full name
+              First name
             </span>
             <input
               required
               disabled={phase === 'starting'}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
-              placeholder="Juan Dela Cruz"
+              placeholder="Juan"
+              maxLength={100}
+              autoComplete="given-name"
             />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-slate-700">
-              Student ID (optional)
+              Last name
             </span>
             <input
               disabled={phase === 'starting'}
-              value={studentNumber}
-              onChange={(e) => setStudentNumber(e.target.value)}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500"
-              placeholder="2023-00123"
+              placeholder="Dela Cruz"
+              required
+              maxLength={100}
+              autoComplete="family-name"
             />
           </label>
           <button
@@ -451,7 +537,12 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
                 : 'Start Exam'}
           </button>
           {lockdownOn && fullscreenError && (
-            <button type="submit" value="windowed" disabled={phase === 'starting'} className="btn btn-secondary w-full disabled:opacity-60">
+            <button
+              type="submit"
+              value="windowed"
+              disabled={phase === 'starting'}
+              className="btn btn-secondary w-full disabled:opacity-60"
+            >
               Start without fullscreen
             </button>
           )}
@@ -473,9 +564,29 @@ export function ExamClient(props: { token: string; quiz: QuizMeta }) {
     <div className="exam-shell">
       <div className="exam-brandbar">
         <Brand />
-        <span>{lockdownOn ? (fullscreenEnforced ? 'Fullscreen exam' : 'Monitored exam') : 'Student exam'}</span>
+        <span>
+          {lockdownOn
+            ? fullscreenEnforced
+              ? 'Fullscreen exam'
+              : 'Monitored exam'
+            : 'Student exam'}
+        </span>
       </div>
       <main className="exam-taking">
+        <AttemptTimer
+          attempt={attempt}
+          onDeadline={() => {
+            terminatedRef.current = true
+            setSubmitting(true)
+          }}
+          onComplete={(result) => {
+            terminatedRef.current = true
+            setAttempt(result)
+            setPhase('completed')
+            setSubmitting(false)
+            void exitFullscreen()
+          }}
+        />
         <header className="exam-taking-heading">
           <span className="eyebrow">Your exam</span>
           <h1>{quiz.title}</h1>

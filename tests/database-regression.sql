@@ -112,3 +112,7 @@ begin
   raise notice 'PASS: all question types, enumeration matching, one-point scoring, per-quiz names, repeat protection, validation, authentication, repeat migration';
 end $$;
 rollback;
+
+\ir ../supabase/006_classes_and_timers.sql
+\ir ../supabase/006_classes_and_timers.sql
+\ir classes-and-timers.sql

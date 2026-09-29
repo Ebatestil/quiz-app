@@ -7,6 +7,7 @@ import { AppShell, Surface } from '@/components/AppShell'
 import type { AttemptPayload } from '@/lib/types'
 
 const TERMINATION_LABELS: Record<string, string> = {
+  time_expired: 'Time expired',
   tab_switch: 'Auto-submitted: student switched tabs or apps',
   blur: 'Auto-submitted: student left the exam window',
   fullscreen_exit: 'Auto-submitted: student exited fullscreen',
@@ -53,7 +54,7 @@ export default async function AttemptReviewPage({
               {attempt.student_name ? (
                 <div className="text-sm text-slate-500">
                   {attempt.student_name}
-                  {attempt.student_number ? ` · ${attempt.student_number}` : ''}
+                  {attempt.class_name ? ` · ${attempt.class_name}` : ''}
                 </div>
               ) : null}
               <div className="mt-1 text-3xl font-semibold text-slate-900">

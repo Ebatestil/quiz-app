@@ -8,6 +8,7 @@ import type { AttemptRow, Profile } from '@/lib/types'
 import { useFeedback } from '@/components/Notifications'
 
 const TERMINATION_LABELS: Record<string, string> = {
+  time_expired: 'Time expired',
   tab_switch: 'Tab/app switch',
   blur: 'Left window',
   fullscreen_exit: 'Exited fullscreen',
@@ -35,10 +36,14 @@ export function ResultsClient(props: {
     setLoading(true)
     await feedback(async () => {
       const supabase = createClient()
+      const expired = await supabase.rpc('expire_quiz_attempts', {
+        p_quiz_id: quizId,
+      })
+      if (expired.error) throw expired.error
       let query = supabase
         .from('attempts')
         .select(
-          'id, started_at, completed_at, score, total_questions, student_name, student_number, termination_reason',
+          'id, started_at, completed_at, score, total_questions, student_name, class_name, termination_reason',
           { count: 'exact' },
         )
         .eq('quiz_id', quizId)
@@ -48,7 +53,11 @@ export function ResultsClient(props: {
         query = query.eq('user_id', profile.id)
       }
 
-      let completedQuery = supabase.from('attempts').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId).not('completed_at', 'is', null)
+      let completedQuery = supabase
+        .from('attempts')
+        .select('id', { count: 'exact', head: true })
+        .eq('quiz_id', quizId)
+        .not('completed_at', 'is', null)
       if (!isOwner) completedQuery = completedQuery.eq('user_id', profile.id)
       const [result, completedResult] = await Promise.all([
         query.range((requestedPage - 1) * 15, requestedPage * 15 - 1),
@@ -57,10 +66,16 @@ export function ResultsClient(props: {
       if (result.error) throw result.error
       if (completedResult.error) throw completedResult.error
       const nextTotal = result.count ?? 0
-      const nextPage = Math.min(requestedPage, Math.max(1, Math.ceil(nextTotal / 15)))
+      const nextPage = Math.min(
+        requestedPage,
+        Math.max(1, Math.ceil(nextTotal / 15)),
+      )
       let nextRows = result.data
       if (nextPage !== requestedPage) {
-        const corrected = await query.range((nextPage - 1) * 15, nextPage * 15 - 1)
+        const corrected = await query.range(
+          (nextPage - 1) * 15,
+          nextPage * 15 - 1,
+        )
         if (corrected.error) throw corrected.error
         nextRows = corrected.data
       }
@@ -144,9 +159,9 @@ export function ResultsClient(props: {
                               <div className="font-medium text-slate-900">
                                 {r.student_name}
                               </div>
-                              {r.student_number ? (
+                              {r.class_name ? (
                                 <div className="text-xs text-slate-400">
-                                  {r.student_number}
+                                  {r.class_name}
                                 </div>
                               ) : null}
                             </>
@@ -203,14 +218,32 @@ export function ResultsClient(props: {
             </div>
           )}
           {total > 0 && (
-            <nav aria-label="Submission history pages" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <nav
+              aria-label="Submission history pages"
+              className="mt-4 flex flex-wrap items-center justify-between gap-3"
+            >
               <p className="text-sm text-slate-500" aria-live="polite">
-                Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} of {total} submissions
+                Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} of{' '}
+                {total} submissions
               </p>
               <div className="flex items-center gap-3">
-                <button className="btn" disabled={loading || page === 1} onClick={() => load(page - 1)}>Previous</button>
-                <span className="text-sm text-slate-600">Page {page} of {pageCount}</span>
-                <button className="btn" disabled={loading || page >= pageCount} onClick={() => load(page + 1)}>Next</button>
+                <button
+                  className="btn"
+                  disabled={loading || page === 1}
+                  onClick={() => load(page - 1)}
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-slate-600">
+                  Page {page} of {pageCount}
+                </span>
+                <button
+                  className="btn"
+                  disabled={loading || page >= pageCount}
+                  onClick={() => load(page + 1)}
+                >
+                  Next
+                </button>
               </div>
             </nav>
           )}
