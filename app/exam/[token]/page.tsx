@@ -12,7 +12,7 @@ export default async function ExamPage({
   const { data: quiz } = await supabase
     .from('quizzes')
     .select(
-      'id, title, description, is_published, lockdown_enabled, time_limit_minutes',
+      'id, title, description, is_published, lockdown_enabled, time_limit_minutes, available_on',
     )
     .eq('share_token', token)
     .single()

@@ -120,3 +120,11 @@ rollback;
 \ir ../supabase/007_lockdown_warnings.sql
 \ir ../supabase/007_lockdown_warnings.sql
 \ir lockdown-warnings.sql
+
+\ir ../supabase/008_quiz_availability.sql
+\ir ../supabase/008_quiz_availability.sql
+\ir quiz-availability.sql
+
+\ir ../supabase/009_teacher_delete_attempts.sql
+\ir ../supabase/009_teacher_delete_attempts.sql
+\ir teacher-retakes.sql

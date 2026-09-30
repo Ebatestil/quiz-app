@@ -14,6 +14,7 @@ export type Quiz = {
   description: string | null
   is_published: boolean
   share_token: string
+  available_on: string | null
   time_limit_minutes: number | null
   lockdown_enabled: boolean
   created_at: string

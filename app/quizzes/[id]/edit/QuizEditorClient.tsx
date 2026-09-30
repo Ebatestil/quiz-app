@@ -38,6 +38,7 @@ export function QuizEditorClient(props: {
   const [description, setDescription] = useState(quiz.description ?? '')
   const [isPublished, setIsPublished] = useState(quiz.is_published)
   const [lockdownEnabled, setLockdownEnabled] = useState(quiz.lockdown_enabled)
+  const [availableOn, setAvailableOn] = useState(quiz.available_on ?? '')
   const [minutes, setMinutes] = useState(
     quiz.time_limit_minutes?.toString() ?? '',
   )
@@ -96,6 +97,7 @@ export function QuizEditorClient(props: {
         p_published: isPublished,
         p_lockdown: lockdownEnabled,
         p_minutes: duration,
+        p_available_on: availableOn || null,
         p_classes: classIds,
       })
       if (error) throw error
@@ -253,6 +255,18 @@ export function QuizEditorClient(props: {
                     onChange={(e) => setLockdownEnabled(e.target.checked)}
                   />
                 </label>
+                <Field
+                  label="Available on (Philippine time)"
+                  type="date"
+                  value={availableOn}
+                  onChange={(e) => setAvailableOn(e.target.value)}
+                />
+                <p className="text-xs text-slate-500">
+                  Leave blank to allow any date. Otherwise, students can start
+                  only on this date, and saved answers are submitted at midnight
+                  if the timer has not ended. Date and timer changes apply to
+                  new attempts.
+                </p>
                 <Field
                   label="Time limit (minutes)"
                   type="number"

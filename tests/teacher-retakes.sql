@@ -1,0 +1,44 @@
+-- Disposable test database only, after 009.
+begin;
+set local plpgsql.check_asserts = on;
+grant usage on schema public,auth to authenticated;
+grant select,insert,update,delete on all tables in schema public to authenticated;
+do $$
+declare teacher uuid := gen_random_uuid(); student uuid := gen_random_uuid(); other_teacher uuid := gen_random_uuid();
+  quiz bigint; section bigint; token uuid; question bigint; attempt bigint; retake bigint;
+begin
+  insert into auth.users(id,email) values(teacher,'retakes@example.test'),(other_teacher,'other-retakes@example.test');
+  insert into auth.users(id,is_anonymous) values(student,true);
+  insert into classes(user_id,name) values(teacher,'Retake class') returning id into section;
+  insert into class_students(class_id,first_name,last_name) values(section,'Jamie','Santos');
+  insert into quizzes(user_id,title,is_published,lockdown_enabled) values(teacher,'Retake quiz',true,true) returning id,share_token into quiz,token;
+  insert into quiz_classes values(quiz,section);
+  insert into questions(quiz_id,type,prompt,answer_text) values(quiz,'identification','Say yes','yes') returning id into question;
+  perform set_config('request.jwt.claim.sub',student::text,true);
+  attempt := (start_public_attempt(token,section,'Jamie','Santos')->>'id')::bigint;
+  perform submit_answer(attempt,question,null,'yes');
+  perform report_violation(attempt,'blur',gen_random_uuid());
+  perform complete_attempt(attempt);
+  set local role authenticated;
+  delete from attempts where id=attempt;
+  reset role;
+  assert exists(select 1 from attempts where id=attempt), 'Student deleted own attempt';
+  perform set_config('request.jwt.claim.sub',other_teacher::text,true);
+  set local role authenticated;
+  delete from attempts where id=attempt;
+  reset role;
+  assert exists(select 1 from attempts where id=attempt), 'Other teacher deleted attempt';
+  perform set_config('request.jwt.claim.sub',teacher::text,true);
+  set local role authenticated;
+  delete from attempts where id=attempt;
+  reset role;
+  assert not exists(select 1 from attempts where id=attempt), 'Owner deletion failed';
+  assert not exists(select 1 from attempt_answers where attempt_id=attempt), 'Answers not removed';
+  assert not exists(select 1 from attempt_questions where attempt_id=attempt), 'Question order not removed';
+  assert not exists(select 1 from attempt_violations where attempt_id=attempt), 'Warnings not removed';
+  perform set_config('request.jwt.claim.sub',student::text,true);
+  retake := (start_public_attempt(token,section,'Jamie','Santos')->>'id')::bigint;
+  assert retake <> attempt, 'Retake did not create new attempt';
+  raise notice 'PASS: teacher-only deletion, cascading cleanup, registered student retake';
+end $$;
+rollback;

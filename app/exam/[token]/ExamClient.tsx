@@ -24,6 +24,7 @@ type QuizMeta = {
   title: string
   description: string | null
   is_published: boolean
+  available_on: string | null
   time_limit_minutes: number | null
   lockdown_enabled: boolean
 } | null
@@ -503,6 +504,22 @@ export function ExamClient(props: {
           </div>
         ) : null}
 
+        {quiz.available_on && (
+          <p className="mt-4 rounded-md border border-emerald-100 bg-emerald-50 p-3 text-sm">
+            Available only on{' '}
+            {new Date(quiz.available_on + 'T00:00:00+08:00').toLocaleDateString(
+              'en-PH',
+              {
+                timeZone: 'Asia/Manila',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              },
+            )}
+            , Philippine time. The exam closes at midnight, even if your timer
+            has time remaining.
+          </p>
+        )}
         {quiz.time_limit_minutes && (
           <p className="mt-4 text-sm font-medium">
             Time limit: {quiz.time_limit_minutes} minutes. The timer starts when

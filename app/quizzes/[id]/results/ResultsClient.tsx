@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { AppShell, Surface } from '@/components/AppShell'
@@ -28,11 +28,17 @@ export function ResultsClient(props: {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(props.initialTotal)
   const [completed, setCompleted] = useState(props.initialCompleted)
-  const pageCount = Math.max(1, Math.ceil(total / 15))
+  const [matched, setMatched] = useState(props.initialTotal)
+  const [search, setSearch] = useState('')
+  const [activeSearch, setActiveSearch] = useState('')
+  const pending = useRef(false)
+  const pageCount = Math.max(1, Math.ceil(matched / 15))
   const [loading, setLoading] = useState(false)
   const feedback = useFeedback()
 
-  async function load(requestedPage = page) {
+  async function load(requestedPage = page, term = activeSearch) {
+    if (pending.current) return
+    pending.current = true
     setLoading(true)
     await feedback(async () => {
       const supabase = createClient()
@@ -59,10 +65,23 @@ export function ResultsClient(props: {
         .eq('quiz_id', quizId)
         .not('completed_at', 'is', null)
       if (!isOwner) completedQuery = completedQuery.eq('user_id', profile.id)
-      const [result, completedResult] = await Promise.all([
+      let totalQuery = supabase
+        .from('attempts')
+        .select('id', { count: 'exact', head: true })
+        .eq('quiz_id', quizId)
+      if (!isOwner) totalQuery = totalQuery.eq('user_id', profile.id)
+      if (term.trim()) {
+        const literal = term
+          .trim()
+          .replace(/[\\%_]/g, (character) => '\\' + character)
+        query = query.ilike('student_name', '%' + literal + '%')
+      }
+      const [result, completedResult, totalResult] = await Promise.all([
         query.range((requestedPage - 1) * 15, requestedPage * 15 - 1),
         completedQuery,
+        totalQuery,
       ])
+      if (totalResult.error) throw totalResult.error
       if (result.error) throw result.error
       if (completedResult.error) throw completedResult.error
       const nextTotal = result.count ?? 0
@@ -80,11 +99,43 @@ export function ResultsClient(props: {
         nextRows = corrected.data
       }
       setRows((nextRows ?? []) as AttemptRow[])
-      setTotal(nextTotal)
+      setMatched(nextTotal)
+      setTotal(totalResult.count ?? 0)
+      setActiveSearch(term.trim())
       setCompleted(completedResult.count ?? 0)
       setPage(nextPage)
     }, 'Results refreshed.')
     setLoading(false)
+    pending.current = false
+  }
+
+  async function deleteAttempt(row: AttemptRow) {
+    if (!isOwner || pending.current) return
+    if (
+      !confirm(
+        'Delete attempt #' +
+          row.id +
+          ' for ' +
+          (row.student_name || 'this user') +
+          '? This permanently removes its score, answers and warnings. The student can retake if the quiz is available and no other attempt blocks them.',
+      )
+    )
+      return
+    pending.current = true
+    setLoading(true)
+    const removed = await feedback(async () => {
+      const { error } = await createClient()
+        .from('attempts')
+        .delete()
+        .eq('id', row.id)
+        .eq('quiz_id', quizId)
+        .select('id')
+        .single()
+      if (error) throw error
+    }, 'Attempt deleted. The student can retake while the quiz is available.')
+    pending.current = false
+    if (removed) await load(page)
+    else setLoading(false)
   }
 
   return (
@@ -126,11 +177,54 @@ export function ResultsClient(props: {
           title="Submission history"
           subtitle="Open an attempt to review individual answers."
         >
+          {isOwner && (
+            <form
+              className="mb-4 flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void load(1, search)
+              }}
+            >
+              <label
+                className="flex flex-1 flex-col gap-1 text-sm"
+                htmlFor="student-search"
+              >
+                Search student name
+                <input
+                  id="student-search"
+                  type="search"
+                  className="form-input"
+                  placeholder="Enter a student's name"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  disabled={loading}
+                />
+              </label>
+              <button className="btn btn-primary" disabled={loading}>
+                Search
+              </button>
+              {(search || activeSearch) && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={loading}
+                  onClick={() => {
+                    setSearch('')
+                    void load(1, '')
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </form>
+          )}
           {loading ? (
             <div className="text-sm text-slate-500">Loading...</div>
           ) : rows.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-              No attempts yet.
+              {activeSearch
+                ? 'No submissions match this student name.'
+                : 'No attempts yet.'}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-md border border-slate-200">
@@ -204,12 +298,24 @@ export function ResultsClient(props: {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/quizzes/${quizId}/results/${r.id}`}
-                          className="btn "
-                        >
-                          Review
-                        </Link>
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            href={`/quizzes/${quizId}/results/${r.id}`}
+                            className="btn "
+                          >
+                            Review
+                          </Link>
+                          {isOwner && (
+                            <button
+                              className="roster-delete"
+                              disabled={loading}
+                              onClick={() => void deleteAttempt(r)}
+                              aria-label={'Delete attempt ' + r.id}
+                            >
+                              Delete attempt
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -217,14 +323,15 @@ export function ResultsClient(props: {
               </table>
             </div>
           )}
-          {total > 0 && (
+          {matched > 0 && (
             <nav
               aria-label="Submission history pages"
               className="mt-4 flex flex-wrap items-center justify-between gap-3"
             >
               <p className="text-sm text-slate-500" aria-live="polite">
-                Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} of{' '}
-                {total} submissions
+                Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, matched)} of{' '}
+                {matched}{' '}
+                {activeSearch ? 'matching submissions' : 'submissions'}
               </p>
               <div className="flex items-center gap-3">
                 <button

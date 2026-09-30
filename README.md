@@ -35,6 +35,10 @@ Same features as before, plus a new one:
    must be assigned to classes before students can start new shared attempts.
    Then run [`supabase/007_lockdown_warnings.sql`](./supabase/007_lockdown_warnings.sql)
    for two lockdown warnings before automatic submission on the third violation.
+   Then run [`supabase/008_quiz_availability.sql`](./supabase/008_quiz_availability.sql)
+   to enable optional quiz availability dates in Philippine time.
+   Then run [`supabase/009_teacher_delete_attempts.sql`](./supabase/009_teacher_delete_attempts.sql)
+   to allow quiz owners to delete attempts for retakes.
    Apply these migrations before deploying the updated app. Vercel does not run SQL migrations.
 4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
    Students use this to take an exam without creating an account.
@@ -208,3 +212,15 @@ devices, which is outside what a web app can do.
 Run `tests/database-regression.sql` only in an empty disposable PostgreSQL database.
 It exercises the historical migrations, then applies migration 006 twice and runs
 `tests/classes-and-timers.sql`. Never run the fixture against a live Supabase project.
+
+Quiz availability: set **Available on (Philippine time)** in the quiz editor to
+restrict new attempts to one calendar date. Leave it blank for any date. Dated
+attempts expire at the earlier of their timer deadline and midnight ending that
+day. The database enforces this independently of the student device clock.
+Settings changes apply to new attempts; existing deadlines stay unchanged.
+
+Teachers can search submissions by student name across all result pages. The
+summary totals still include all attempts. **Delete attempt** permanently removes
+that submission, its score, answers, and warnings after confirmation. Only the
+quiz owner can delete it. The student can then retake if still registered, the quiz
+is available, and no other matching attempt remains.
