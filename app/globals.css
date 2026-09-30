@@ -2,10 +2,10 @@
 
 .roster-panel {
   background: #fff;
-  border: 1px solid #e9e9ef;
+  border: 1px solid #e1e5df;
   border-radius: 10px;
   padding: 24px;
-  box-shadow: 0 3px 12px #20204408;
+  box-shadow: 0 3px 12px #222c2508;
 }
 .roster-toolbar {
   display: flex;
@@ -17,11 +17,11 @@
 .roster-toolbar h2 {
   font-size: 18px;
   font-weight: 500;
-  color: #39374d;
+  color: #222923;
 }
 .roster-toolbar p {
   font-size: 12px;
-  color: #858193;
+  color: #687267;
   margin-top: 5px;
 }
 .roster-search {
@@ -29,13 +29,13 @@
   align-items: center;
   gap: 10px;
   width: min(100%, 390px);
-  border: 1px solid #d8d6e0;
+  border: 1px solid #dfe5dc;
   border-radius: 30px;
   padding: 10px 16px;
-  color: #9691a4;
+  color: #758073;
 }
 .roster-search:focus-within {
-  outline: 2px solid #353071;
+  outline: 2px solid #275d44;
   outline-offset: 2px;
 }
 .roster-search input {
@@ -45,15 +45,15 @@
   font-size: 13px;
 }
 .btn.roster-add {
-  background: #211e5b;
-  border-color: #211e5b;
+  background: #275d44;
+  border-color: #275d44;
   color: white;
   border-radius: 28px;
   white-space: nowrap;
-  box-shadow: 0 2px 4px #211e5b18;
+  box-shadow: 0 2px 4px #275d4418;
 }
 .btn.roster-add:hover {
-  background: #302b76;
+  background: #244f38;
 }
 .roster-table-scroll {
   overflow-x: auto;
@@ -63,11 +63,11 @@
   border-collapse: collapse;
   text-align: left;
   font-size: 14px;
-  color: #736e83;
+  color: #687267;
 }
 .roster-table th {
-  background: #f6f6fa;
-  color: #575166;
+  background: #f7f8f5;
+  color: #535f53;
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
@@ -76,7 +76,7 @@
 }
 .roster-table td {
   padding: 14px 20px;
-  border-bottom: 1px solid #e5e3eb;
+  border-bottom: 1px solid #e1e5df;
 }
 .roster-table tr:last-child td {
   border-bottom: 0;
@@ -89,23 +89,23 @@
 }
 .roster-class-row:hover,
 .roster-class-row:focus-within {
-  background: #faf9ff;
+  background: #f3f7f0;
 }
 .roster-class-link {
   text-align: left;
   font-weight: 500;
-  color: #51496d;
+  color: #275d44;
 }
 .roster-class-link span {
   margin-left: 12px;
-  color: #a5a0b3;
+  color: #758073;
 }
 .roster-count {
   display: inline-block;
   padding: 3px 12px;
   border-radius: 20px;
-  background: #f4f3fa;
-  color: #6d6589;
+  background: #eef3e9;
+  color: #3f5b44;
   font-size: 12px;
 }
 .roster-actions {
@@ -125,12 +125,12 @@
   white-space: nowrap;
 }
 .roster-edit {
-  border: 1px solid #302878;
-  color: #302878;
+  border: 1px solid #275d44;
+  color: #275d44;
   background: white;
 }
 .roster-edit:hover {
-  background: #f3f1fb;
+  background: #eff6ef;
 }
 .roster-delete {
   background: #ff4859;
@@ -147,7 +147,7 @@
 .roster-empty {
   padding: 48px 20px;
   text-align: center;
-  color: #858193;
+  color: #687267;
   font-size: 14px;
 }
 .roster-dialog {
@@ -160,10 +160,10 @@
   padding: 28px;
   background: white;
   color: var(--foreground);
-  box-shadow: 0 24px 80px #17133333;
+  box-shadow: 0 24px 80px #222c2533;
 }
 .roster-dialog::backdrop {
-  background: #1d193e66;
+  background: #222c2566;
   backdrop-filter: blur(3px);
 }
 .roster-dialog-heading {
@@ -1003,46 +1003,8 @@ tbody tr:hover {
   }
 }
 @media (max-width: 700px) {
-  .sidebar {
-    position: static;
-    width: 100%;
-    padding: 16px 20px;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 18px;
-  }
-  .sidebar > a {
-    align-self: center;
-  }
-  .sidebar-label,
-  .account,
   .topbar-account {
     display: none;
-  }
-  .sidebar-bottom {
-    grid-column: 2;
-    grid-row: 1;
-    margin: 0;
-    padding: 0;
-  }
-  .workspace-nav {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    gap: 8px;
-  }
-  .workspace-nav a {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-  .workspace-nav .ui-icon {
-    width: 16px;
-    height: 16px;
-  }
-  .nav-dot {
-    display: none;
-  }
-  .workspace-body {
-    margin-left: 0;
   }
   .workspace-topbar {
     min-height: 48px;
@@ -1194,5 +1156,78 @@ tbody tr:hover {
   .notification {
     bottom: 16px;
     right: 16px;
+  }
+}
+
+/* A modal navigation drawer for phones and tablets, including iPad landscape. */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  background: #f7f8f5;
+}
+.mobile-drawer {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  width: min(320px, 88vw);
+  height: 100dvh;
+  background: #222c25;
+  color: #aebbb0;
+}
+.mobile-drawer::backdrop {
+  background: #18251dcc;
+}
+.drawer-content {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: max(28px, env(safe-area-inset-top)) 20px
+    max(20px, env(safe-area-inset-bottom));
+}
+.drawer-close {
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 12px;
+  border: 1px solid #4b5d4e;
+  border-radius: 8px;
+  color: white;
+  font-size: 26px;
+}
+@media (max-width: 1366px) {
+  .sidebar {
+    display: none;
+  }
+  .workspace-body {
+    margin-left: 0;
+  }
+  .menu-toggle {
+    display: inline-flex;
+  }
+  .workspace-topbar {
+    gap: 12px;
+  }
+  .workspace-topbar > span:first-of-type {
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar-account {
+    max-width: 35%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

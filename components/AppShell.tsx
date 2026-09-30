@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
@@ -90,6 +91,32 @@ export function AppShell(props: {
   const router = useRouter()
   const feedback = useFeedback()
   const pathname = usePathname()
+  const drawer = useRef<HTMLDialogElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  function closeMenu() {
+    drawer.current?.close()
+    setMenuOpen(false)
+  }
+  function openMenu() {
+    drawer.current?.showModal()
+    setMenuOpen(true)
+  }
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1367px)')
+    const closeOnDesktop = () => {
+      if (media.matches) drawer.current?.close()
+    }
+    media.addEventListener('change', closeOnDesktop)
+    return () => media.removeEventListener('change', closeOnDesktop)
+  }, [])
+  useEffect(() => {
+    if (!menuOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [menuOpen])
   const items = [
     { label: 'My quizzes', to: '/', icon: 'grid' as const },
     { label: 'Classes', to: '/classes', icon: 'users' as const },
@@ -107,54 +134,107 @@ export function AppShell(props: {
     }, 'Signed out.')
   }
 
+  const navigation = (
+    <>
+      <Link href="/" aria-label="Quiz App home" onClick={closeMenu}>
+        <Brand light />
+      </Link>
+      <div className="sidebar-label">Workspace</div>
+      <nav className="workspace-nav" aria-label="Main navigation">
+        {items.map((item) => {
+          const active =
+            item.to === '/'
+              ? pathname === '/' || pathname.startsWith('/quizzes')
+              : pathname.startsWith(item.to)
+          return (
+            <Link
+              key={item.to}
+              href={item.to}
+              onClick={closeMenu}
+              aria-current={active ? 'page' : undefined}
+              className={active ? 'nav-active' : ''}
+            >
+              <Icon name={item.icon} />
+              {item.label}
+              {active && <span className="nav-dot" />}
+            </Link>
+          )
+        })}
+      </nav>
+      <div className="sidebar-bottom">
+        <div className="account">
+          <span className="avatar">
+            {(profile.name || 'U').slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <strong>{profile.name || 'Your account'}</strong>
+            <span>{profile.is_admin ? 'Administrator' : 'Quiz creator'}</span>
+          </div>
+        </div>
+        <button
+          className="logout"
+          onClick={() => {
+            closeMenu()
+            void logout()
+          }}
+        >
+          <Icon name="logout" />
+          <span>Sign out</span>
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <div className="workspace">
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <aside className="sidebar">
-        <Link href="/" aria-label="Quiz App home">
-          <Brand light />
-        </Link>
-        <div className="sidebar-label">Workspace</div>
-        <nav className="workspace-nav" aria-label="Main navigation">
-          {items.map((item) => {
-            const active =
-              item.to === '/'
-                ? pathname === '/' || pathname.startsWith('/quizzes')
-                : pathname.startsWith(item.to)
-            return (
-              <Link
-                key={item.to}
-                href={item.to}
-                aria-current={active ? 'page' : undefined}
-                className={active ? 'nav-active' : ''}
-              >
-                <Icon name={item.icon} />
-                {item.label}
-                {active && <span className="nav-dot" />}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="account">
-            <span className="avatar">
-              {(profile.name || 'U').slice(0, 1).toUpperCase()}
-            </span>
-            <div>
-              <strong>{profile.name || 'Your account'}</strong>
-              <span>{profile.is_admin ? 'Administrator' : 'Quiz creator'}</span>
-            </div>
-          </div>
-          <button className="logout" onClick={logout}>
-            <Icon name="logout" />
-            <span>Sign out</span>
+      <aside className="sidebar">{navigation}</aside>
+      <dialog
+        ref={drawer}
+        id="mobile-navigation"
+        className="mobile-drawer"
+        aria-label="Navigation menu"
+        onClose={() => setMenuOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) closeMenu()
+        }}
+      >
+        <aside className="drawer-content">
+          <button
+            type="button"
+            className="drawer-close"
+            aria-label="Close menu"
+            onClick={closeMenu}
+          >
+            ×
           </button>
-        </div>
-      </aside>
+          {navigation}
+        </aside>
+      </dialog>
       <div className="workspace-body">
         <div className="workspace-topbar">
+          <button
+            type="button"
+            className="menu-toggle"
+            aria-label="Open navigation menu"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-navigation"
+            onClick={openMenu}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
           <span>
             Workspace <span className="breadcrumb-slash">/</span>{' '}
             {pathname.startsWith('/admin')
