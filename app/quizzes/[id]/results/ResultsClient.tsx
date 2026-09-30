@@ -158,7 +158,7 @@ export function ResultsClient(props: {
         </>
       }
     >
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full min-w-0">
         <div className="stats-strip" aria-label="Submission overview">
           <div className="stat">
             <span>Total attempts</span>
@@ -228,7 +228,7 @@ export function ResultsClient(props: {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-md border border-slate-200">
-              <table className="w-full text-left text-sm">
+              <table className="w-full whitespace-nowrap text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Attempt</th>
