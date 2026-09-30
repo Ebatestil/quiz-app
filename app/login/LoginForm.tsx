@@ -200,9 +200,6 @@ function LoginForm() {
             }}
             type="button"
           >
-            {mode === 'login'
-              ? 'New here? Create an account'
-              : 'Already have an account? Sign in'}
           </button>
           <div className="auth-student-note">
             Taking a quiz? Open the exam link from your teacher.
