@@ -7,9 +7,17 @@ export default async function ClassesPage() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('classes')
-    .select('*')
+    .select('*, class_students(count)')
     .eq('user_id', profile.id)
     .order('name')
   if (error) throw error
-  return <ClassesClient profile={profile} initialClasses={data ?? []} />
+  return (
+    <ClassesClient
+      profile={profile}
+      initialClasses={(data ?? []).map((row) => ({
+        ...row,
+        student_count: row.class_students?.[0]?.count ?? 0,
+      }))}
+    />
+  )
 }

@@ -1,5 +1,208 @@
 @import 'tailwindcss';
 
+.roster-panel {
+  background: #fff;
+  border: 1px solid #e9e9ef;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 3px 12px #20204408;
+}
+.roster-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 24px;
+}
+.roster-toolbar h2 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #39374d;
+}
+.roster-toolbar p {
+  font-size: 12px;
+  color: #858193;
+  margin-top: 5px;
+}
+.roster-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 390px);
+  border: 1px solid #d8d6e0;
+  border-radius: 30px;
+  padding: 10px 16px;
+  color: #9691a4;
+}
+.roster-search:focus-within {
+  outline: 2px solid #353071;
+  outline-offset: 2px;
+}
+.roster-search input {
+  min-width: 0;
+  width: 100%;
+  outline: none;
+  font-size: 13px;
+}
+.btn.roster-add {
+  background: #211e5b;
+  border-color: #211e5b;
+  color: white;
+  border-radius: 28px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px #211e5b18;
+}
+.btn.roster-add:hover {
+  background: #302b76;
+}
+.roster-table-scroll {
+  overflow-x: auto;
+}
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+  color: #736e83;
+}
+.roster-table th {
+  background: #f6f6fa;
+  color: #575166;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 17px 20px;
+}
+.roster-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid #e5e3eb;
+}
+.roster-table tr:last-child td {
+  border-bottom: 0;
+}
+.roster-table .roster-actions-heading {
+  text-align: right;
+}
+.roster-class-row {
+  cursor: pointer;
+}
+.roster-class-row:hover,
+.roster-class-row:focus-within {
+  background: #faf9ff;
+}
+.roster-class-link {
+  text-align: left;
+  font-weight: 500;
+  color: #51496d;
+}
+.roster-class-link span {
+  margin-left: 12px;
+  color: #a5a0b3;
+}
+.roster-count {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  background: #f4f3fa;
+  color: #6d6589;
+  font-size: 12px;
+}
+.roster-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.roster-edit,
+.roster-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 24px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.roster-edit {
+  border: 1px solid #302878;
+  color: #302878;
+  background: white;
+}
+.roster-edit:hover {
+  background: #f3f1fb;
+}
+.roster-delete {
+  background: #ff4859;
+  border: 1px solid #ff4859;
+  color: white;
+  box-shadow: 0 2px 4px #ff485918;
+}
+.roster-delete:hover {
+  background: #e63548;
+}
+.roster-actions button:disabled {
+  opacity: 0.5;
+}
+.roster-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: #858193;
+  font-size: 14px;
+}
+.roster-dialog {
+  margin: auto;
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border: 0;
+  border-radius: 16px;
+  padding: 28px;
+  background: white;
+  color: var(--foreground);
+  box-shadow: 0 24px 80px #17133333;
+}
+.roster-dialog::backdrop {
+  background: #1d193e66;
+  backdrop-filter: blur(3px);
+}
+.roster-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.roster-dialog-heading h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+.roster-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+@media (max-width: 800px) {
+  .roster-panel {
+    padding: 16px;
+  }
+  .roster-toolbar {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .roster-toolbar > div {
+    flex: 1;
+  }
+  .roster-search {
+    order: 3;
+    width: 100%;
+  }
+  .roster-table {
+    min-width: 560px;
+  }
+}
+
 :root {
   --background: #f7f8f5;
   --foreground: #222923;

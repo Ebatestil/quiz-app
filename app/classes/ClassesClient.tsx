@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AppShell, Field, Surface } from '@/components/AppShell'
+import { AppShell, Field, Icon } from '@/components/AppShell'
 import { useFeedback } from '@/components/Notifications'
 import { createClient } from '@/lib/supabase/client'
 import type { ClassSection, Profile, RosterStudent } from '@/lib/types'
@@ -11,13 +11,16 @@ export function ClassesClient({
   initialClasses,
 }: {
   profile: Profile
-  initialClasses: ClassSection[]
+  initialClasses: (ClassSection & { student_count: number })[]
 }) {
   const [classes, setClasses] = useState(initialClasses)
-  const [selected, setSelected] = useState<number | null>(
-    initialClasses[0]?.id ?? null,
-  )
+  const [selected, setSelected] = useState<number | null>(null)
   const [className, setClassName] = useState('')
+  const [search, setSearch] = useState('')
+  const [formError, setFormError] = useState('')
+  const [classForm, setClassForm] = useState<'new' | ClassSection | null>(null)
+  const [studentForm, setStudentForm] = useState(false)
+  const [reload, setReload] = useState(0)
   const [students, setStudents] = useState<RosterStudent[]>([])
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -35,6 +38,7 @@ export function ClassesClient({
       setLoading(true)
       setLoadError('')
       setStudents([])
+      setStudentForm(false)
       setEditing(null)
       setFirstName('')
       setLastName('')
@@ -55,292 +59,558 @@ export function ClassesClient({
     return () => {
       cancelled = true
     }
-  }, [selected])
+  }, [selected, reload])
 
   async function mutate(action: () => Promise<void>, message: string) {
     if (pending.current) return
     pending.current = true
     setBusy(true)
+    setFormError('')
     try {
-      await feedback(action, message)
+      await feedback(async () => {
+        try {
+          await action()
+        } catch (error) {
+          setFormError(
+            error && typeof error === 'object' && 'message' in error
+              ? String(error.message)
+              : 'Unable to save. Please try again.',
+          )
+          throw error
+        }
+      }, message)
     } finally {
       pending.current = false
       setBusy(false)
     }
   }
 
+  const visibleClasses = classes.filter((c) =>
+    c.name.toLowerCase().includes(search.trim().toLowerCase()),
+  )
+  const visibleStudents = students.filter((s) =>
+    (s.first_name + ' ' + s.last_name)
+      .toLowerCase()
+      .includes(search.trim().toLowerCase()),
+  )
+  function openClass(id: number | null) {
+    if (busy) return
+    setLoading(id !== null)
+    setStudents([])
+    setSelected(id)
+    setSearch('')
+  }
+  function editClass(section: ClassSection | 'new') {
+    setFormError('')
+    setClassName(section === 'new' ? '' : section.name)
+    setClassForm(section)
+  }
+  function editStudent(student?: RosterStudent) {
+    setFormError('')
+    setEditing(student?.id ?? null)
+    setFirstName(student?.first_name ?? '')
+    setLastName(student?.last_name ?? '')
+    setStudentForm(true)
+  }
+  async function saveClass() {
+    await mutate(
+      async () => {
+        if (!className.trim()) throw new Error('Enter a class name.')
+        const client = createClient()
+        const query =
+          classForm === 'new'
+            ? client
+                .from('classes')
+                .insert({ user_id: profile.id, name: className.trim() })
+            : client
+                .from('classes')
+                .update({ name: className.trim() })
+                .eq('id', (classForm as ClassSection).id)
+        const { data, error } = await query.select().single()
+        if (error)
+          throw new Error(
+            error.code === '23505'
+              ? 'A class with this name already exists.'
+              : error.message,
+          )
+        setClasses((prev) =>
+          [
+            ...prev.filter((c) => c.id !== data.id),
+            {
+              ...data,
+              student_count:
+                prev.find((c) => c.id === data.id)?.student_count ?? 0,
+            },
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        )
+        setClassForm(null)
+      },
+      classForm === 'new' ? 'Class created.' : 'Class updated.',
+    )
+  }
+  async function deleteClass(section: ClassSection) {
+    if (
+      !confirm(
+        'Delete ' +
+          section.name +
+          ' and its roster? Quiz assignments will be removed. Past submissions will be kept.',
+      )
+    )
+      return
+    await mutate(async () => {
+      const { error } = await createClient()
+        .from('classes')
+        .delete()
+        .eq('id', section.id)
+        .select('id')
+        .single()
+      if (error) throw error
+      setClasses((prev) => prev.filter((c) => c.id !== section.id))
+      if (selected === section.id) {
+        setSelected(null)
+        setSearch('')
+      }
+    }, 'Class deleted.')
+  }
+  async function saveStudent() {
+    if (!current) return
+    await mutate(
+      async () => {
+        const values = {
+          class_id: current.id,
+          first_name: firstName.trim().replace(/\s+/g, ' '),
+          last_name: lastName.trim().replace(/\s+/g, ' '),
+        }
+        if (!values.first_name || !values.last_name)
+          throw new Error('Enter both first and last names.')
+        const client = createClient()
+        const query = editing
+          ? client.from('class_students').update(values).eq('id', editing)
+          : client.from('class_students').insert(values)
+        const { data, error } = await query.select().single()
+        if (error)
+          throw new Error(
+            error.code === '23505'
+              ? 'This name is already registered in this class.'
+              : error.message,
+          )
+        setStudents((prev) =>
+          [...prev.filter((s) => s.id !== data.id), data].sort(
+            (a, b) =>
+              a.last_name.localeCompare(b.last_name) ||
+              a.first_name.localeCompare(b.first_name),
+          ),
+        )
+        if (!editing)
+          setClasses((prev) =>
+            prev.map((c) =>
+              c.id === current.id
+                ? { ...c, student_count: c.student_count + 1 }
+                : c,
+            ),
+          )
+        setStudentForm(false)
+      },
+      editing ? 'Student updated.' : 'Student registered.',
+    )
+  }
+  async function removeStudent(student: RosterStudent) {
+    if (
+      !confirm(
+        'Remove ' +
+          student.first_name +
+          ' ' +
+          student.last_name +
+          ' from this class? Past submissions will be kept.',
+      )
+    )
+      return
+    await mutate(async () => {
+      const { error } = await createClient()
+        .from('class_students')
+        .delete()
+        .eq('id', student.id)
+        .select('id')
+        .single()
+      if (error) throw error
+      setStudents((prev) => prev.filter((s) => s.id !== student.id))
+      setClasses((prev) =>
+        prev.map((c) =>
+          c.id === student.class_id
+            ? { ...c, student_count: Math.max(0, c.student_count - 1) }
+            : c,
+        ),
+      )
+    }, 'Student removed.')
+  }
+
   return (
     <AppShell
       profile={profile}
-      title="Classes & students"
-      subtitle="Create a section, then register the names allowed to take its quizzes."
+      title={current ? current.name : 'Classes'}
+      subtitle={
+        current
+          ? 'Manage the students registered in this section.'
+          : 'Organize your sections and manage their student rosters.'
+      }
     >
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <Surface title="Your classes">
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void mutate(async () => {
-                const { data, error } = await createClient()
-                  .from('classes')
-                  .insert({ user_id: profile.id, name: className.trim() })
-                  .select()
-                  .single()
-                if (error) throw error
-                setClasses((prev) =>
-                  [...prev, data].sort((a, b) => a.name.localeCompare(b.name)),
-                )
-                setSelected(data.id)
-                setClassName('')
-              }, 'Class created.')
-            }}
-          >
-            <Field
-              label="Class / section name"
-              required
-              maxLength={120}
-              value={className}
-              onChange={(e) => setClassName(e.target.value)}
-              placeholder="Grade 10 — Section A"
+      {current && (
+        <button
+          className="btn mb-5"
+          disabled={busy}
+          onClick={() => openClass(null)}
+        >
+          ← All classes
+        </button>
+      )}
+      <section
+        className="roster-panel"
+        aria-label={current ? 'Student roster' : 'Classes list'}
+      >
+        <header className="roster-toolbar">
+          <div>
+            <h2>{current ? 'Students' : 'Classes'}</h2>
+            <p>
+              {current
+                ? loading
+                  ? 'Loading roster…'
+                  : students.length + ' registered students'
+                : classes.length + ' classes'}
+              {!current && ' · Select a class to view its students'}
+            </p>
+          </div>
+          <label className="roster-search">
+            <Icon name="search" />
+            <span className="sr-only">
+              {current ? 'Search students' : 'Search classes'}
+            </span>
+            <input
+              type="search"
+              placeholder={current ? 'Search students…' : 'Search classes…'}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
-            <button className="btn btn-primary" disabled={busy}>
-              Create class
+          </label>
+          <button
+            className="btn roster-add"
+            disabled={
+              busy || (current !== undefined && (loading || !!loadError))
+            }
+            onClick={() => (current ? editStudent() : editClass('new'))}
+          >
+            <Icon name="plus" />
+            {current ? 'Add student' : 'Add class'}
+          </button>
+        </header>
+        {loadError && current ? (
+          <div className="roster-empty" role="alert">
+            <p>{loadError}</p>
+            <button
+              className="btn mt-3"
+              onClick={() => setReload((n) => n + 1)}
+            >
+              Try again
             </button>
-          </form>
-          <div className="mt-5 flex flex-col gap-2">
-            {classes.map((c) => (
-              <button
-                key={c.id}
-                className={`btn text-left ${selected === c.id ? 'btn-primary' : ''}`}
-                aria-pressed={selected === c.id}
-                disabled={busy}
-                onClick={() => setSelected(c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
-            {!classes.length && (
-              <p className="text-sm text-slate-500">
-                Create your first class to get started.
-              </p>
+          </div>
+        ) : loading && current ? (
+          <p className="roster-empty" role="status">
+            Loading students…
+          </p>
+        ) : (
+          <div className="roster-table-scroll">
+            <table className="roster-table">
+              <thead>
+                <tr>
+                  {current ? (
+                    <>
+                      <th scope="col">First name</th>
+                      <th scope="col">Last name</th>
+                    </>
+                  ) : (
+                    <>
+                      <th scope="col">Class / section</th>
+                      <th scope="col">Students</th>
+                    </>
+                  )}
+                  <th scope="col" className="roster-actions-heading">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {current
+                  ? visibleStudents.map((student) => (
+                      <tr key={student.id}>
+                        <td>{student.first_name}</td>
+                        <td>{student.last_name}</td>
+                        <td>
+                          <div className="roster-actions">
+                            <button
+                              className="roster-edit"
+                              disabled={busy}
+                              onClick={() => editStudent(student)}
+                              aria-label={
+                                'Edit ' +
+                                student.first_name +
+                                ' ' +
+                                student.last_name
+                              }
+                            >
+                              <RowIcon />
+                              Edit
+                            </button>
+                            <button
+                              className="roster-delete"
+                              disabled={busy}
+                              onClick={() => void removeStudent(student)}
+                              aria-label={
+                                'Remove ' +
+                                student.first_name +
+                                ' ' +
+                                student.last_name
+                              }
+                            >
+                              <RowIcon remove />
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  : visibleClasses.map((section) => (
+                      <tr
+                        key={section.id}
+                        className="roster-class-row"
+                        onClick={() => openClass(section.id)}
+                      >
+                        <td>
+                          <button
+                            className="roster-class-link"
+                            disabled={busy}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openClass(section.id)
+                            }}
+                          >
+                            {section.name}
+                            <span aria-hidden="true"> →</span>
+                          </button>
+                        </td>
+                        <td>
+                          <span className="roster-count">
+                            {section.student_count}
+                          </span>
+                        </td>
+                        <td>
+                          <div
+                            className="roster-actions"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              className="roster-edit"
+                              disabled={busy}
+                              onClick={() => editClass(section)}
+                              aria-label={'Edit ' + section.name}
+                            >
+                              <RowIcon />
+                              Edit
+                            </button>
+                            <button
+                              className="roster-delete"
+                              disabled={busy}
+                              onClick={() => void deleteClass(section)}
+                              aria-label={'Delete ' + section.name}
+                            >
+                              <RowIcon remove />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+            {(current ? visibleStudents : visibleClasses).length === 0 && (
+              <div className="roster-empty">
+                {search
+                  ? 'No matches. Try a different name.'
+                  : current
+                    ? 'No students yet. Add your first student to this class.'
+                    : 'No classes yet. Add a class to get started.'}
+              </div>
             )}
           </div>
-        </Surface>
-        <Surface
-          title={current?.name ?? 'Student roster'}
-          subtitle="Enter names exactly as students should type them. Capitalization and extra spaces are ignored."
+        )}
+      </section>
+      {classForm && (
+        <RosterDialog
+          title={classForm === 'new' ? 'Add class' : 'Edit class'}
+          busy={busy}
+          onClose={() => setClassForm(null)}
         >
-          {current ? (
-            <>
-              <div className="mb-5 flex gap-2">
-                <button
-                  className="btn"
-                  disabled={busy}
-                  onClick={() => {
-                    const name = prompt('Class / section name', current.name)
-                    if (!name?.trim()) return
-                    void mutate(async () => {
-                      const { data, error } = await createClient()
-                        .from('classes')
-                        .update({ name: name.trim() })
-                        .eq('id', current.id)
-                        .select()
-                        .single()
-                      if (error) throw error
-                      setClasses((prev) =>
-                        prev.map((c) => (c.id === data.id ? data : c)),
-                      )
-                    }, 'Class renamed.')
-                  }}
-                >
-                  Rename class
-                </button>
-                <button
-                  className="btn"
-                  disabled={busy}
-                  onClick={() => {
-                    if (
-                      !confirm(
-                        `Delete ${current.name} and its roster? Its quiz assignments will be removed. Past submissions will be kept.`,
-                      )
-                    )
-                      return
-                    void mutate(async () => {
-                      const { error } = await createClient()
-                        .from('classes')
-                        .delete()
-                        .eq('id', current.id)
-                        .select('id')
-                        .single()
-                      if (error) throw error
-                      const next = classes.filter((c) => c.id !== current.id)
-                      setClasses(next)
-                      setSelected(next[0]?.id ?? null)
-                    }, 'Class deleted.')
-                  }}
-                >
-                  Delete class
-                </button>
-              </div>
-              <form
-                className="mb-6 flex flex-wrap items-end gap-3"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void mutate(
-                    async () => {
-                      const client = createClient()
-                      const values = {
-                        class_id: current.id,
-                        first_name: firstName.trim().replace(/\s+/g, ' '),
-                        last_name: lastName.trim().replace(/\s+/g, ' '),
-                      }
-                      const query = editing
-                        ? client
-                            .from('class_students')
-                            .update(values)
-                            .eq('id', editing)
-                        : client.from('class_students').insert(values)
-                      const { data, error } = await query.select().single()
-                      if (error)
-                        throw new Error(
-                          error.code === '23505'
-                            ? 'This name is already registered in this class.'
-                            : error.message,
-                        )
-                      setStudents((prev) =>
-                        [...prev.filter((s) => s.id !== data.id), data].sort(
-                          (a, b) =>
-                            a.last_name.localeCompare(b.last_name) ||
-                            a.first_name.localeCompare(b.first_name),
-                        ),
-                      )
-                      setEditing(null)
-                      setFirstName('')
-                      setLastName('')
-                    },
-                    editing ? 'Student updated.' : 'Student registered.',
-                  )
-                }}
-              >
-                <Field
-                  label="First name"
-                  required
-                  maxLength={100}
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-                <Field
-                  label="Last name"
-                  required
-                  maxLength={100}
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-                <button className="btn btn-primary" disabled={busy || loading}>
-                  {editing ? 'Save student' : 'Register student'}
-                </button>
-                {editing && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setEditing(null)
-                      setFirstName('')
-                      setLastName('')
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </form>
-              {loadError && (
-                <p role="alert" className="text-red-600">
-                  {loadError}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void saveClass()
+            }}
+          >
+            <fieldset disabled={busy} className="space-y-5">
+              {formError && (
+                <p role="alert" className="text-sm text-red-600">
+                  {formError}
                 </p>
               )}
-              {loading ? (
-                <p role="status">Loading students…</p>
-              ) : (
-                <>
-                  <p className="mb-3 text-sm text-slate-500">
-                    {students.length} registered students
-                  </p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr>
-                          <th className="py-3">First name</th>
-                          <th>Last name</th>
-                          <th>
-                            <span className="sr-only">Actions</span>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {students.map((s) => (
-                          <tr key={s.id} className="border-t border-slate-200">
-                            <td className="py-3">{s.first_name}</td>
-                            <td>{s.last_name}</td>
-                            <td className="flex justify-end gap-2 py-2">
-                              <button
-                                className="btn"
-                                disabled={busy}
-                                onClick={() => {
-                                  setEditing(s.id)
-                                  setFirstName(s.first_name)
-                                  setLastName(s.last_name)
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="btn"
-                                disabled={busy}
-                                onClick={() => {
-                                  if (
-                                    !confirm(
-                                      `Remove ${s.first_name} ${s.last_name} from this class? Past submissions will be kept.`,
-                                    )
-                                  )
-                                    return
-                                  void mutate(async () => {
-                                    const { error } = await createClient()
-                                      .from('class_students')
-                                      .delete()
-                                      .eq('id', s.id)
-                                      .select('id')
-                                      .single()
-                                    if (error) throw error
-                                    setStudents((prev) =>
-                                      prev.filter((row) => row.id !== s.id),
-                                    )
-                                    if (editing === s.id) {
-                                      setEditing(null)
-                                      setFirstName('')
-                                      setLastName('')
-                                    }
-                                  }, 'Student removed.')
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
+              <Field
+                autoFocus
+                label="Class / section name"
+                required
+                maxLength={120}
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                placeholder="Grade 10 — Section A"
+              />
+              <div className="roster-dialog-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setClassForm(null)}
+                >
+                  Cancel
+                </button>
+                <button className="btn roster-add">
+                  {busy
+                    ? 'Saving…'
+                    : classForm === 'new'
+                      ? 'Add class'
+                      : 'Save changes'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </RosterDialog>
+      )}
+      {studentForm && current && (
+        <RosterDialog
+          title={editing ? 'Edit student' : 'Add student'}
+          busy={busy}
+          onClose={() => setStudentForm(false)}
+        >
+          <p className="mb-5 text-sm text-slate-500">
+            {current.name} · Use the names the student will enter when taking a
+            quiz.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void saveStudent()
+            }}
+          >
+            <fieldset disabled={busy} className="space-y-5">
+              {formError && (
+                <p role="alert" className="text-sm text-red-600">{formError}</p>
               )}
-            </>
-          ) : (
-            <p className="text-sm text-slate-500">
-              Choose a class to manage its students.
-            </p>
-          )}
-        </Surface>
-      </div>
+              <Field
+                autoFocus
+                label="First name"
+                required
+                maxLength={100}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+              <Field
+                label="Last name"
+                required
+                maxLength={100}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+              <div className="roster-dialog-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setStudentForm(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn roster-add">
+                  {busy ? 'Saving…' : editing ? 'Save changes' : 'Add student'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </RosterDialog>
+      )}
     </AppShell>
+  )
+}
+
+function RosterDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string
+  busy: boolean
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const dialog = ref.current
+    dialog?.showModal()
+    return () => {
+      dialog?.close()
+    }
+  }, [])
+  return (
+    <dialog
+      ref={ref}
+      className="roster-dialog"
+      aria-labelledby="roster-dialog-title"
+      onCancel={(e) => {
+        e.preventDefault()
+        if (!busy) onClose()
+      }}
+    >
+      <div className="roster-dialog-heading">
+        <h2 id="roster-dialog-title">{title}</h2>
+        <button
+          type="button"
+          aria-label="Close form"
+          className="btn"
+          disabled={busy}
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      {children}
+    </dialog>
+  )
+}
+function RowIcon({ remove = false }: { remove?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {remove ? (
+        <>
+          <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+        </>
+      ) : (
+        <>
+          <path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" />
+        </>
+      )}
+    </svg>
   )
 }
