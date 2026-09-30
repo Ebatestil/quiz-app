@@ -17,6 +17,7 @@ export function ClassesClient({
   const [selected, setSelected] = useState<number | null>(null)
   const [className, setClassName] = useState('')
   const [search, setSearch] = useState('')
+  const [requestedPage, setRequestedPage] = useState(1)
   const [formError, setFormError] = useState('')
   const [classForm, setClassForm] = useState<'new' | ClassSection | null>(null)
   const [studentForm, setStudentForm] = useState(false)
@@ -93,12 +94,20 @@ export function ClassesClient({
       .toLowerCase()
       .includes(search.trim().toLowerCase()),
   )
+  const totalRows = current ? visibleStudents.length : visibleClasses.length
+  const pageCount = Math.max(1, Math.ceil(totalRows / 10))
+  const page = Math.min(requestedPage, pageCount)
+  const pageStart = (page - 1) * 10
+  const pageClasses = visibleClasses.slice(pageStart, pageStart + 10)
+  const pageStudents = visibleStudents.slice(pageStart, pageStart + 10)
+
   function openClass(id: number | null) {
     if (busy) return
     setLoading(id !== null)
     setStudents([])
     setSelected(id)
     setSearch('')
+    setRequestedPage(1)
   }
   function editClass(section: ClassSection | 'new') {
     setFormError('')
@@ -169,6 +178,7 @@ export function ClassesClient({
       if (selected === section.id) {
         setSelected(null)
         setSearch('')
+    setRequestedPage(1)
       }
     }, 'Class deleted.')
   }
@@ -288,7 +298,7 @@ export function ClassesClient({
               type="search"
               placeholder={current ? 'Search students…' : 'Search classes…'}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setRequestedPage(1) }}
             />
           </label>
           <button
@@ -339,7 +349,7 @@ export function ClassesClient({
               </thead>
               <tbody>
                 {current
-                  ? visibleStudents.map((student) => (
+                  ? pageStudents.map((student) => (
                       <tr key={student.id}>
                         <td>{student.first_name}</td>
                         <td>{student.last_name}</td>
@@ -377,7 +387,7 @@ export function ClassesClient({
                         </td>
                       </tr>
                     ))
-                  : visibleClasses.map((section) => (
+                  : pageClasses.map((section) => (
                       <tr
                         key={section.id}
                         className="roster-class-row"
@@ -440,6 +450,16 @@ export function ClassesClient({
               </div>
             )}
           </div>
+        )}
+        {!loading && !loadError && totalRows > 0 && (
+          <nav className="roster-pagination" aria-label={current ? 'Student pages' : 'Class pages'}>
+            <p aria-live="polite">Showing {pageStart + 1}–{Math.min(pageStart + 10, totalRows)} of {totalRows} {current ? 'students' : 'classes'}</p>
+            <div>
+              <button className="btn" disabled={busy || page === 1} onClick={() => setRequestedPage(page - 1)}>Previous</button>
+              <span>Page {page} of {pageCount}</span>
+              <button className="btn" disabled={busy || page === pageCount} onClick={() => setRequestedPage(page + 1)}>Next</button>
+            </div>
+          </nav>
         )}
       </section>
       {classForm && (

@@ -243,7 +243,8 @@ export function QuizEditorClient(props: {
                       Exam Mode (lockdown)
                     </div>
                     <div className="text-xs text-slate-500">
-                      Requests fullscreen; switching tabs/apps auto-submits.
+                      Requests fullscreen; two warnings, then auto-submit on the
+                      third violation.
                     </div>
                   </div>
                   <input
@@ -331,8 +332,9 @@ export function QuizEditorClient(props: {
                 {quiz.lockdown_enabled ? (
                   <p className="text-xs text-amber-600">
                     Exam Mode is on: fullscreen is requested, and the attempt
-                    auto-submits the instant they switch tabs, switch apps, or
-                    exit fullscreen.
+                    gives two warnings for switching tabs/apps or exiting
+                    fullscreen. The third violation automatically submits saved
+                    answers.
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500">

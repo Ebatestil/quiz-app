@@ -71,6 +71,12 @@ export default async function AttemptReviewPage({
             </div>
           </div>
 
+          {attempt.violation_count > 0 && (
+            <p className="mt-4 text-sm text-slate-500">
+              Lockdown events recorded: {attempt.violation_count}. The first two
+              events are warnings; the third submits the exam.
+            </p>
+          )}
           {attempt.termination_reason ? (
             <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {TERMINATION_LABELS[attempt.termination_reason] ??

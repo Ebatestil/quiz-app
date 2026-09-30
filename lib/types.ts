@@ -61,6 +61,7 @@ export type AttemptPayload = {
   class_name: string | null
   termination_reason: TerminationReason
   expires_at: string | null
+  violation_count: number
   server_now: string
   questions: AttemptQuestionView[]
 }

@@ -68,6 +68,13 @@ export function ExamClient(props: {
   const [terminationReason, setTerminationReason] =
     useState<TerminationReason>(null)
 
+  const [warning, setWarning] = useState<{
+    type: string
+    eventId: string
+    count: number
+    failed: boolean
+  } | null>(null)
+  const [warningBusy, setWarningBusy] = useState(false)
   const terminatedRef = useRef(false)
   const phaseRef = useRef<Phase>(phase)
   const attemptIdRef = useRef<number | null>(null)
@@ -79,39 +86,73 @@ export function ExamClient(props: {
 
   const lockdownOn = !!quiz?.lockdown_enabled
 
+  const recordViolation = useCallback(async (type: string, eventId: string) => {
+    setWarningBusy(true)
+    try {
+      const { data, error } = await createClient().rpc('report_violation', {
+        p_attempt_id: attemptIdRef.current,
+        p_type: type,
+        p_event_id: eventId,
+      })
+      if (error) throw error
+      const result = data as AttemptPayload
+      setAttempt(result)
+      if (result.completed_at) {
+        setWarning(null)
+        setTerminationReason(result.termination_reason)
+        setPhase(
+          result.termination_reason === 'time_expired'
+            ? 'completed'
+            : 'terminated',
+        )
+        await exitFullscreen()
+      } else {
+        setWarning({
+          type,
+          eventId,
+          count: result.violation_count,
+          failed: false,
+        })
+      }
+    } catch {
+      setWarning({ type, eventId, count: 0, failed: true })
+    } finally {
+      setWarningBusy(false)
+    }
+  }, [])
+
   const finishWithViolation = useCallback(
-    async (type: string) => {
+    (type: string) => {
       if (
         terminatedRef.current ||
         phaseRef.current !== 'taking' ||
         !attemptIdRef.current
       )
         return
+      // One incident can emit blur, visibilitychange and fullscreenchange together.
+      // Keep it latched until the student acknowledges the recorded warning.
       terminatedRef.current = true
-      setTerminationReason(type as TerminationReason)
-      setSubmitting(true)
-      const saved = await feedback(async () => {
-        const { data, error } = await createClient().rpc('report_violation', {
-          p_attempt_id: attemptIdRef.current,
-          p_type: type,
-        })
-        if (error) throw error
-        setAttempt(data as AttemptPayload)
-        setPhase(
-          (data as AttemptPayload).termination_reason === 'time_expired'
-            ? 'completed'
-            : 'terminated',
-        )
-        await exitFullscreen()
-      }, 'Exam submitted automatically.')
-      if (!saved)
-        setError(
-          'Automatic submission failed. Your answers are locked. Select Submit Exam to try again.',
-        )
-      setSubmitting(false)
+      const eventId = crypto.randomUUID()
+      setWarning({ type, eventId, count: 0, failed: false })
+      void recordViolation(type, eventId)
     },
-    [feedback],
+    [recordViolation],
   )
+
+  async function acknowledgeWarning() {
+    if (warningBusy || warning?.failed || document.hidden) return
+    setWarningBusy(true)
+    if (fullscreenEnforced && !isFullscreen()) {
+      try {
+        await requestFullscreen()
+      } catch {
+        setFullscreenEnforced(false)
+      }
+    }
+    setWarning(null)
+    terminatedRef.current = false
+    setWarningBusy(false)
+  }
 
   // Lockdown listeners — only active while actively taking a lockdown exam.
   useEffect(() => {
@@ -304,7 +345,9 @@ export function ExamClient(props: {
     if (error) throw error
     if (data?.expired) {
       await refresh(attempt.id)
-      throw new Error('Time is up. Your previously saved answers were submitted.')
+      throw new Error(
+        'Time is up. Your previously saved answers were submitted.',
+      )
     }
   }
   async function answer(selectedIndex: number) {
@@ -337,14 +380,9 @@ export function ExamClient(props: {
         textAnswer.trim()
       )
         await saveAnswer(null, textAnswer)
-      const { data, error } = terminationReason
-        ? await createClient().rpc('report_violation', {
-            p_attempt_id: attempt.id,
-            p_type: terminationReason,
-          })
-        : await createClient().rpc('complete_attempt', {
-            p_attempt_id: attempt.id,
-          })
+      const { data, error } = await createClient().rpc('complete_attempt', {
+        p_attempt_id: attempt.id,
+      })
       if (error) throw error
       terminatedRef.current = true
       setAttempt(data as AttemptPayload)
@@ -446,11 +484,11 @@ export function ExamClient(props: {
 
         {lockdownOn ? (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-            This exam monitors tab and app switching, which will submit your
-            exam immediately. We’ll request fullscreen when you start. If your
-            browser cannot open it, you can continue without fullscreen. If
-            fullscreen opens, exiting it will also submit your exam. Close other
-            apps before starting.
+            This exam monitors tab and app switching. You receive two warnings;
+            the third violation submits your saved answers automatically. We’ll
+            request fullscreen when you start. If your browser cannot open it,
+            you can continue without fullscreen. If fullscreen opens, exiting it
+            also counts as a violation. Close other apps before starting.
           </div>
         ) : null}
 
@@ -573,6 +611,20 @@ export function ExamClient(props: {
         </span>
       </div>
       <main className="exam-taking">
+        {warning && (
+          <LockdownWarning
+            warning={warning}
+            busy={warningBusy}
+            onContinue={() => void acknowledgeWarning()}
+            onRetry={() => void recordViolation(warning.type, warning.eventId)}
+          />
+        )}
+        {lockdownOn && (
+          <p className="text-sm text-slate-500">
+            Warnings: {Math.min(attempt.violation_count ?? 0, 2)} / 2 · Third
+            violation submits the exam.
+          </p>
+        )}
         <AttemptTimer
           attempt={attempt}
           onDeadline={() => {
@@ -726,5 +778,60 @@ function Shell(props: { children: React.ReactNode }) {
         Take your time. Read each question carefully.
       </p>
     </div>
+  )
+}
+
+function LockdownWarning({
+  warning,
+  busy,
+  onContinue,
+  onRetry,
+}: {
+  warning: { type: string; count: number; failed: boolean }
+  busy: boolean
+  onContinue: () => void
+  onRetry: () => void
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const element = dialog.current
+    element?.showModal()
+    return () => element?.close()
+  }, [])
+  return (
+    <dialog
+      ref={dialog}
+      className="roster-dialog"
+      aria-labelledby="lockdown-warning-title"
+      onCancel={(e) => e.preventDefault()}
+    >
+      <h2 id="lockdown-warning-title" className="text-xl font-semibold">
+        {busy
+          ? 'Recording warning…'
+          : warning.failed
+            ? 'Connection interrupted'
+            : 'Warning ' + warning.count + ' of 2'}
+      </h2>
+      <p className="my-4 text-sm">
+        {warning.failed
+          ? 'We could not record this event. Reconnect and retry to continue. Your answers remain locked and the timer keeps running.'
+          : VIOLATION_LABELS[warning.type]}
+      </p>
+      {!warning.failed && (
+        <p className="mb-5 text-sm">
+          {warning.count === 2
+            ? 'This is your final warning. The next violation will submit your saved answers automatically.'
+            : 'Stay in this exam. The third violation will submit your saved answers automatically.'}{' '}
+          The timer continues during warnings.
+        </p>
+      )}
+      <button
+        className="btn btn-primary"
+        disabled={busy}
+        onClick={warning.failed ? onRetry : onContinue}
+      >
+        {warning.failed ? 'Retry' : 'I understand — continue exam'}
+      </button>
+    </dialog>
   )
 }

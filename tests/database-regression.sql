@@ -116,3 +116,7 @@ rollback;
 \ir ../supabase/006_classes_and_timers.sql
 \ir ../supabase/006_classes_and_timers.sql
 \ir classes-and-timers.sql
+
+\ir ../supabase/007_lockdown_warnings.sql
+\ir ../supabase/007_lockdown_warnings.sql
+\ir lockdown-warnings.sql

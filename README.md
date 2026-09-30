@@ -13,7 +13,7 @@ Same features as before, plus a new one:
   is automatically made an admin)
 - **New: Exam Mode** — share a quiz as a link students can take with no
   account (registered first and last name + class), optionally locked down so switching
-  tabs/apps auto-submits the exam. See "Exam Mode" below.
+  tabs/apps gives two warnings before the third violation submits the exam. See "Exam Mode" below.
 
 ## 1. Create a Supabase project
 
@@ -33,6 +33,8 @@ Same features as before, plus a new one:
    Then run [`supabase/006_classes_and_timers.sql`](./supabase/006_classes_and_timers.sql)
    for teacher rosters, class assignments, and server-enforced timers. Existing quizzes
    must be assigned to classes before students can start new shared attempts.
+   Then run [`supabase/007_lockdown_warnings.sql`](./supabase/007_lockdown_warnings.sql)
+   for two lockdown warnings before automatic submission on the third violation.
    Apply these migrations before deploying the updated app. Vercel does not run SQL migrations.
 4. Go to **Authentication → Providers** and enable **Anonymous Sign-Ins**.
    Students use this to take an exam without creating an account.
@@ -132,9 +134,10 @@ from alt-tabbing or opening another app — no website has that power. What it
 - Detect the moment the student switches tabs, switches apps, minimizes the
   window, or exits fullscreen (all of these fire detectable browser events on
   both desktop and mobile)
-- The instant that happens, the exam is **auto-submitted** with whatever was
-  answered so far, and it's logged so you can see exactly why an attempt
-  ended when you review it
+- The first two violations show warnings. Students acknowledge each warning to
+  continue. The third violation auto-submits saved answers and records the score.
+  Related browser events are grouped until acknowledgement; retries do not add
+  another violation. The quiz timer keeps running during warnings.
 - Right-click, copy/paste, and common devtools shortcuts are also blocked
 
 This is the same approach tools like Google Forms' quiz lockdown use — it
