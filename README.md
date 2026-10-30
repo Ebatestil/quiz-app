@@ -21,16 +21,3 @@ Run `npm ci`, configure `.env.local`, run `supabase/010_shared_demo.sql` in the
 Supabase SQL editor, then run `npm run dev`. Open `/` to enter the demo.
 
 Checks: `npm run lint`, `npm run build`, and `node --test tests/*.cjs`.
-
-## Full app backup
-
-The original app, Git history, and original environment configuration were copied
-to `C:\Users\ASUS\Documents\quiz-app-full-backup-2026-10-30` before this conversion.
-The backup excludes rebuildable `node_modules` and `.next` directories; run
-`npm ci` there before using it.
-
-Existing classroom records were exported and verified before clearing them.
-The backup contains `classroom-records-before-clear.json` and
-`RESTORE_CLASSROOM_RECORDS.sql`. Teacher accounts/profiles were preserved.
-Use that SQL in the original project to restore records into empty classroom
-tables. Do not commit or publish the backup: it contains private data and keys.
