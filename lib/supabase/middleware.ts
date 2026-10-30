@@ -4,6 +4,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = ['/login', '/exam']
 
 export async function updateSession(request: NextRequest) {
+  // The portfolio deployment never initializes Supabase or accepts real app APIs.
+  if (process.env.DEMO_ONLY === 'true') {
+    const path = request.nextUrl.pathname
+    if (path.startsWith('/api/')) return NextResponse.json({ message: 'Unavailable in the demo.' }, { status: 404 })
+    const response = path === '/demo'
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL('/demo', request.url))
+    response.headers.set('Cache-Control', 'no-store')
+    response.headers.set('Content-Security-Policy', "connect-src 'self'; form-action 'self'")
+    return response
+  }
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
